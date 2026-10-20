@@ -60,11 +60,11 @@ runtime/smoke-test.sh runtime/build/out/artel-runtime-0.1.0-linux-x64.tar.gz
 
 ## 크기
 
-linux-x64 `0.1.0` 기준 archive 는 293 MB, 풀면 약 710 MB 입니다. 풀었을 때 Python 과 agent-server 의존성이 430 MB(그중 `site-packages` 332 MB), PostgreSQL 105 MB, orchestration jar 90 MB, Java 74 MB 입니다.
+CI 의 archive 크기(2026-10-20, `develop` 기준): `linux-x64` 293 MB, `linux-arm64` 284 MB, `darwin-x64` 321 MB, `darwin-arm64` 304 MB, `win32-x64` 265 MB. linux-x64 를 풀면 약 710 MB 이고, 그중 Python 과 agent-server 의존성이 430 MB(`site-packages` 332 MB), PostgreSQL 105 MB, orchestration jar 90 MB, Java 74 MB 입니다.
 
 ## 아직 처리하지 않은 것
 
 - macOS: bundle 안의 Mach-O 파일은 서명이 유효하지 않을 때만 ad-hoc 서명합니다. Developer ID 서명과 notarization 은 desktop 앱 빌드에서 `postgres`, `java`, `python`, 모든 `.dylib` 와 `.so` 를 대상으로 해야 합니다.
 - Windows: 실행 파일이 서명되지 않아 백신 프로그램이 격리할 수 있습니다.
 - Linux: PostgreSQL 이 함께 싣고 오는 `libstdc++.so.6` 이 glibc 2.36 을 요구하므로 Ubuntu 22.04, Debian 11, RHEL 9 처럼 glibc 2.36 미만인 배포판에서는 `initdb` 가 실행되지 않습니다. `vector.so` 는 `-std=gnu11` 에 `_GNU_SOURCE` 없이 compile 해 glibc 2.14 까지만 요구하고, `build.sh` 가 이 값이 PostgreSQL 의 요구치를 넘지 않는지 확인합니다.
-- `win32-arm64`: `tiktoken` 과 `cryptography` 는 Windows arm64 wheel 이 없어 Rust 로 source build 됩니다. `cryptography` 는 OpenSSL 도 필요하므로 그대로는 빌드되지 않을 가능성이 큽니다. pgvector 와 Java, Python 자체는 이 target 에서도 빌드됩니다.
+- `win32-arm64`: `tiktoken` 과 `cryptography` 는 Windows arm64 wheel 이 없어 Rust 로 source build 됩니다. `tiktoken` 은 빌드되지만 `cryptography` 는 OpenSSL 을 찾지 못해 실패합니다(`openssl-sys`: `Could not find directory of OpenSSL installation`). OpenSSL arm64 를 받아 `OPENSSL_DIR` 을 주는 단계가 필요합니다. PostgreSQL, pgvector, Java 는 이 target 에서도 빌드됩니다.
