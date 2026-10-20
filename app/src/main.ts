@@ -27,7 +27,12 @@ if (process.env['ARTEL_RUN_CLI'] === '1') {
   process.argv = [process.execPath, cliPath, ...cliArgsFromArgv(process.argv)];
   await import(cliPath);
 } else {
-  await startDesktop();
+  // Not awaited: Electron emits `ready` only after the ESM main module's top-level await settles,
+  // and startDesktop waits for `ready`, so awaiting it here never opens a window.
+  startDesktop().catch((error: unknown) => {
+    dialog.showErrorBox('ARTEL', error instanceof Error ? error.message : String(error));
+    app.exit(1);
+  });
 }
 
 async function startDesktop(): Promise<void> {
