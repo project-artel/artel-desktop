@@ -1,14 +1,26 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  Tray,
+} from 'electron';
 import { promises as fs, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { applyCliLink, isLinked, planFor, type LinkEnv } from './cli-link.js';
 import { cliArgsFromArgv } from './cli-shim.js';
 import { StackController } from './lifecycle.js';
+import { NetworkSettingsService } from './network-service.js';
+import { parseNetworkDraft } from './network-settings.js';
 import { resolveRuntimeDir } from './runtime-dir.js';
 import { loadSupervisor } from './supervisor.js';
 import { shouldCheckForUpdates } from './update-policy.js';
-import { decideNavigation, decideWindowOpen } from './url-policy.js';
+import { allowedOrigins, decideNavigationAmong, decideWindowOpen } from './url-policy.js';
 
 const here = import.meta.dirname;
 
@@ -41,8 +53,9 @@ async function startDesktop(): Promise<void> {
     return;
   }
 
+  const supervisor = await loadSupervisor();
   const controller = new StackController({
-    supervisor: await loadSupervisor(),
+    supervisor,
     runtimeDir: resolveRuntimeDir({
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
@@ -56,6 +69,10 @@ async function startDesktop(): Promise<void> {
   });
 
   let startupWindow: BrowserWindow | undefined;
+  let networkWindow: BrowserWindow | undefined;
+  // The public URL last saved or read; the main window's navigation policy allows its origin.
+  let publicUrl: string | undefined;
+  let appOrigins: string[] = [];
   let mainWindow: BrowserWindow | undefined;
   // Assigned after the app is ready, but read earlier by refreshTray.
   // eslint-disable-next-line prefer-const
@@ -96,17 +113,67 @@ async function startDesktop(): Promise<void> {
     void startupWindow.loadFile(path.join(here, '..', 'static', 'startup.html'));
   }
 
+  const networkService = new NetworkSettingsService({
+    supervisor,
+    controller,
+    machineName: os.hostname(),
+    onSaved: (settings) => {
+      publicUrl = settings.publicUrl;
+    },
+  });
+  // Paths the renderer may send back: the ones in the saved settings and the ones it picked.
+  const allowedPaths = new Set<string>();
+
+  function openNetworkWindow(): void {
+    if (networkWindow !== undefined && !networkWindow.isDestroyed()) {
+      networkWindow.show();
+      networkWindow.focus();
+      return;
+    }
+    networkWindow = new BrowserWindow({
+      width: 600,
+      height: 760,
+      minWidth: 480,
+      minHeight: 560,
+      show: false,
+      backgroundColor: '#090C10',
+      title: 'ARTEL',
+      icon: iconPath,
+      webPreferences: { ...hardenedPreferences, preload: path.join(here, 'network-preload.cjs') },
+    });
+    networkWindow.setMenuBarVisibility(false);
+    networkWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+    networkWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    networkWindow.once('ready-to-show', () => networkWindow?.show());
+    networkWindow.on('closed', () => {
+      networkWindow = undefined;
+    });
+    void networkWindow.loadFile(path.join(here, '..', 'static', 'network.html'));
+  }
+
+  function fromNetworkWindow(event: Electron.IpcMainInvokeEvent): boolean {
+    return (
+      networkWindow !== undefined &&
+      !networkWindow.isDestroyed() &&
+      event.sender === networkWindow.webContents
+    );
+  }
+
+  function rememberPaths(draft: { certFile: string | null; keyFile: string | null }): void {
+    for (const file of [draft.certFile, draft.keyFile]) if (file !== null) allowedPaths.add(file);
+  }
+
   function openExternal(target: string): void {
     void shell.openExternal(target);
   }
 
   function showConsole(url: string): void {
+    appOrigins = allowedOrigins(url, publicUrl);
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       void mainWindow.loadURL(url);
       mainWindow.show();
       return;
     }
-    const origin = new URL(url).origin;
     mainWindow = new BrowserWindow({
       width: 1440,
       height: 900,
@@ -120,7 +187,7 @@ async function startDesktop(): Promise<void> {
     });
     const contents = mainWindow.webContents;
     const guard = (event: { preventDefault(): void }, target: string): void => {
-      const decision = decideNavigation(target, origin);
+      const decision = decideNavigationAmong(target, appOrigins);
       if (decision === 'allow') return;
       event.preventDefault();
       if (decision === 'open-external') openExternal(target);
@@ -229,6 +296,7 @@ async function startDesktop(): Promise<void> {
           ...(canLink
             ? [{ label: 'Install the artel command…', click: () => void installCliLink() }]
             : []),
+          { label: networkLabel(), click: openNetworkWindow },
           { label: 'Open log folder', click: () => void shell.openPath(controller.logDir()) },
           { type: 'separator' },
           { role: 'quit' },
@@ -247,6 +315,7 @@ async function startDesktop(): Promise<void> {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: 'Open ARTEL', click: openConsole },
+        { label: networkLabel(), click: openNetworkWindow },
         { label: 'Stop stack', enabled: running, click: () => void controller.stop() },
         { label: 'Open log folder', click: () => void shell.openPath(controller.logDir()) },
         { type: 'separator' },
@@ -255,6 +324,48 @@ async function startDesktop(): Promise<void> {
     );
   }
 
+  const networkLabel = (): string =>
+    app.getLocale().toLowerCase().startsWith('ko') ? '네트워크 공유' : 'Network sharing';
+
+  ipcMain.handle('artel:network:get', async (event) => {
+    if (!fromNetworkWindow(event)) throw new Error('Untrusted sender');
+    const view = await networkService.view();
+    rememberPaths(view.draft);
+    return view;
+  });
+  ipcMain.handle('artel:network:evaluate', (event, payload: unknown) => {
+    if (!fromNetworkWindow(event)) throw new Error('Untrusted sender');
+    const parsed = parseNetworkDraft(payload, allowedPaths);
+    return parsed.ok ? networkService.evaluate(parsed.draft) : null;
+  });
+  ipcMain.handle('artel:network:save', async (event, payload: unknown) => {
+    if (!fromNetworkWindow(event)) throw new Error('Untrusted sender');
+    const parsed = parseNetworkDraft(payload, allowedPaths);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    return networkService.save(parsed.draft);
+  });
+  ipcMain.handle('artel:network:pick-file', async (event, kind: unknown) => {
+    if (!fromNetworkWindow(event) || networkWindow === undefined)
+      throw new Error('Untrusted sender');
+    if (kind !== 'certificate' && kind !== 'key') throw new Error('Unknown file kind');
+    const result = await dialog.showOpenDialog(networkWindow, {
+      properties: ['openFile'],
+      filters:
+        kind === 'certificate'
+          ? [{ name: 'Certificate', extensions: ['pem', 'crt', 'cer'] }]
+          : [{ name: 'Private key', extensions: ['pem', 'key'] }],
+    });
+    const chosen = result.filePaths[0];
+    if (result.canceled || chosen === undefined) return null;
+    allowedPaths.add(chosen);
+    return chosen;
+  });
+  ipcMain.handle('artel:network:copy-access-url', async (event) => {
+    if (!fromNetworkWindow(event)) throw new Error('Untrusted sender');
+    const view = await networkService.view();
+    await clipboard.writeText(view.accessUrl);
+    return true;
+  });
   ipcMain.handle('artel:get-state', () => controller.state);
   ipcMain.on('artel:retry', () => void controller.start());
   ipcMain.on('artel:open-logs', () => void shell.openPath(controller.logDir()));
@@ -278,6 +389,12 @@ async function startDesktop(): Promise<void> {
   tray.on('click', openConsole);
   refreshTray();
   openStartupWindow();
+  void supervisor.readStackSettings().then(
+    (settings) => {
+      publicUrl ??= settings.publicUrl;
+    },
+    () => undefined,
+  );
   void controller.start();
   void offerCliLinkOnFirstRun();
   void checkForUpdates();

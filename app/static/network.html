@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ARTEL</title>
+    <style>
+      :root {
+        --bg-canvas: #090c10;
+        --bg-surface: #10151b;
+        --bg-raised: #171d25;
+        --bg-hover: #1d2530;
+        --border-subtle: #27313d;
+        --border-strong: #3b4857;
+        --text-primary: #f4f7fa;
+        --text-secondary: #a7b0bc;
+        --text-muted: #707b88;
+        --action-primary: #24c7e8;
+        --success: #48c78e;
+        --warning: #f2b84b;
+        --critical: #ff634f;
+        --font-sans: 'Inter', 'Pretendard Variable', Pretendard, sans-serif;
+        --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg-canvas);
+        color: var(--text-secondary);
+        font: 400 14px/21px var(--font-sans);
+      }
+      main {
+        width: min(540px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+      h1 {
+        margin: 0 0 4px;
+        color: var(--text-primary);
+        font-size: 22px;
+        line-height: 30px;
+        font-weight: 650;
+      }
+      #intro {
+        margin: 0 0 24px;
+      }
+      .card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .field {
+        display: block;
+        margin-bottom: 16px;
+      }
+      .field:last-child {
+        margin-bottom: 0;
+      }
+      .field > span,
+      legend {
+        display: block;
+        color: var(--text-primary);
+        font-weight: 550;
+        margin-bottom: 4px;
+      }
+      .hint {
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 18px;
+        margin-top: 4px;
+      }
+      input[type='text'],
+      input[type='number'] {
+        width: 100%;
+        padding: 8px 12px;
+        font: 450 14px/21px var(--font-mono);
+        color: var(--text-primary);
+        background: var(--bg-canvas);
+        border: 1px solid var(--border-strong);
+        border-radius: 5px;
+      }
+      input:disabled {
+        color: var(--text-muted);
+        border-color: var(--border-subtle);
+      }
+      .check {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 16px;
+        color: var(--text-primary);
+        cursor: pointer;
+      }
+      .check input {
+        margin: 4px 0 0;
+        width: 16px;
+        height: 16px;
+        accent-color: var(--action-primary);
+      }
+      .check .hint {
+        display: block;
+        margin-top: 0;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .row input {
+        flex: 1;
+        min-width: 0;
+      }
+      button {
+        font: 600 14px/21px var(--font-sans);
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        color: var(--text-primary);
+        background: var(--bg-raised);
+        border: 1px solid var(--border-strong);
+        transition: background 160ms cubic-bezier(0.2, 0, 0, 1);
+        white-space: nowrap;
+      }
+      button:hover:not(:disabled) {
+        background: var(--bg-hover);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      button.primary {
+        background: var(--action-primary);
+        border-color: var(--action-primary);
+        color: #04141a;
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 2px solid var(--action-primary);
+        outline-offset: 2px;
+      }
+      #access {
+        font: 450 14px/21px var(--font-mono);
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+        flex: 1;
+      }
+      .notice {
+        padding: 12px 16px;
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        background: var(--bg-raised);
+        color: var(--text-primary);
+        margin-bottom: 16px;
+      }
+      .notice.warning {
+        border-color: var(--warning);
+      }
+      .notice.critical {
+        border-color: var(--critical);
+      }
+      .notice.success {
+        border-color: var(--success);
+      }
+      .notice .message {
+        color: var(--text-secondary);
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title"></h1>
+      <p id="intro"></p>
+
+      <section class="card" aria-labelledby="access-label">
+        <span id="access-label" class="hint"></span>
+        <div class="row">
+          <span id="access"></span>
+          <button id="copy" type="button"></button>
+        </div>
+        <p class="hint" id="access-hint"></p>
+      </section>
+
+      <div id="warning" class="notice warning" role="alert" hidden>
+        <strong id="warning-title"></strong>
+        <div class="message" id="warning-message"></div>
+      </div>
+      <div id="attached" class="notice" role="status" hidden></div>
+
+      <form id="form" class="card" novalidate>
+        <label class="check">
+          <input id="shared" type="checkbox" />
+          <span>
+            <span id="shared-label"></span>
+            <span class="hint" id="shared-hint"></span>
+          </span>
+        </label>
+
+        <label class="field" for="port">
+          <span id="port-label"></span>
+          <input id="port" type="number" min="1" max="65535" step="1" />
+        </label>
+
+        <label class="field" for="public-url">
+          <span id="public-url-label"></span>
+          <input id="public-url" type="text" spellcheck="false" autocomplete="off" />
+          <div class="hint" id="public-url-hint"></div>
+        </label>
+
+        <label class="check">
+          <input id="use-tls" type="checkbox" />
+          <span id="use-tls-label"></span>
+        </label>
+
+        <div class="field">
+          <label for="cert-file"><span id="cert-label"></span></label>
+          <div class="row">
+            <input id="cert-file" type="text" readonly />
+            <button id="pick-cert" type="button"></button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="key-file"><span id="key-label"></span></label>
+          <div class="row">
+            <input id="key-file" type="text" readonly />
+            <button id="pick-key" type="button"></button>
+          </div>
+        </div>
+      </form>
+
+      <div id="result" class="notice" role="status" hidden></div>
+
+      <div class="actions">
+        <button id="save" type="button" class="primary"></button>
+      </div>
+    </main>
+    <script>
+      (function () {
+        var ko = (navigator.language || '').toLowerCase().indexOf('ko') === 0;
+        var T = ko
+          ? {
+              title: '네트워크 공유',
+              intro: '다른 사람이 이 컴퓨터의 ARTEL 에 접속할 수 있게 설정합니다.',
+              accessLabel: '접속 주소',
+              copy: '복사',
+              copied: '복사했습니다',
+              accessHint: '다른 사람이 브라우저에 입력할 주소입니다.',
+              shared: '다른 컴퓨터의 접속 허용',
+              sharedHint: '켜면 같은 네트워크나 포트 포워딩, 터널로 들어오는 접속을 받습니다.',
+              port: '포트',
+              publicUrl: '공개 주소',
+              publicUrlHint:
+                '다른 사람이 접속할 수 있는 주소여야 합니다. 예: 포워딩한 https://artel.example.com 또는 터널 주소. 비워 두면 호스트와 포트로 정합니다. 기본값:',
+              useTls: '아래 파일로 HTTPS 사용',
+              cert: '인증서 파일',
+              key: '개인 키 파일',
+              pick: '파일 선택…',
+              none: '선택한 파일 없음',
+              save: '저장',
+              saving: '저장하는 중…',
+              warnTitle: '비밀번호가 암호화되지 않습니다',
+              warnMessage:
+                'http 주소로 공유하면 비밀번호와 세션 쿠키가 평문으로 오갑니다. 인증서와 키 파일로 HTTPS 를 켜거나 터널을 사용하세요.',
+              attached:
+                'ARTEL 이 터미널의 artel 명령으로 이미 실행 중입니다. 저장은 하지만 다음에 시작할 때 적용되고, 지금 실행 중인 stack 은 멈추지 않습니다.',
+              restarted: '저장하고 stack 을 다시 시작했습니다.',
+              nextStart: '저장했습니다. 다음에 stack 을 시작할 때 적용됩니다.',
+              restartFailed: '저장했지만 stack 을 다시 시작하지 못했습니다:',
+              errorTitle: '저장하지 못했습니다',
+              needFiles: '인증서 파일과 개인 키 파일을 모두 선택하세요.',
+              badPort: '포트는 1 에서 65535 사이의 정수여야 합니다.',
+            }
+          : {
+              title: 'Network sharing',
+              intro: "Let other people reach this computer's ARTEL.",
+              accessLabel: 'Access URL',
+              copy: 'Copy',
+              copied: 'Copied',
+              accessHint: 'The address other people type into a browser.',
+              shared: 'Allow other computers to connect',
+              sharedHint:
+                'When on, ARTEL accepts connections from your network, a forwarded port, or a tunnel.',
+              port: 'Port',
+              publicUrl: 'Public URL',
+              publicUrlHint:
+                'This must be the address others can reach, such as a forwarded https://artel.example.com or a tunnel URL. Leave blank to derive it from host and port. Default:',
+              useTls: 'Use HTTPS from these files',
+              cert: 'Certificate file',
+              key: 'Private key file',
+              pick: 'Choose file…',
+              none: 'No file chosen',
+              save: 'Save',
+              saving: 'Saving…',
+              warnTitle: 'Passwords will not be encrypted',
+              warnMessage:
+                'Sharing over an http address sends passwords and session cookies in plain text. Turn on HTTPS with a certificate and key file, or use a tunnel.',
+              attached:
+                'ARTEL is already running from the artel command in a terminal. Your changes are saved and apply the next time the stack starts; the running stack is not stopped.',
+              restarted: 'Saved and restarted the stack.',
+              nextStart: 'Saved. This applies the next time the stack starts.',
+              restartFailed: 'Saved, but the stack did not restart:',
+              errorTitle: 'Could not save',
+              needFiles: 'Choose both a certificate file and a private key file.',
+              badPort: 'The port must be an integer from 1 to 65535.',
+            };
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var texts = {
+          title: T.title,
+          intro: T.intro,
+          'access-label': T.accessLabel,
+          copy: T.copy,
+          'access-hint': T.accessHint,
+          'shared-label': T.shared,
+          'shared-hint': T.sharedHint,
+          'port-label': T.port,
+          'public-url-label': T.publicUrl,
+          'use-tls-label': T.useTls,
+          'cert-label': T.cert,
+          'key-label': T.key,
+          'pick-cert': T.pick,
+          'pick-key': T.pick,
+          save: T.save,
+          'warning-title': T.warnTitle,
+          'warning-message': T.warnMessage,
+        };
+        Object.keys(texts).forEach(function (id) {
+          $(id).textContent = texts[id];
+        });
+        document.title = T.title + ' - ARTEL';
+
+        var state = { certFile: null, keyFile: null, defaultUrl: '' };
+
+        function draft() {
+          return {
+            shared: $('shared').checked,
+            port: Number($('port').value),
+            publicUrl: $('public-url').value,
+            useTls: $('use-tls').checked,
+            certFile: state.certFile,
+            keyFile: state.keyFile,
+          };
+        }
+        function showResult(kind, text) {
+          var box = $('result');
+          box.className = 'notice ' + kind;
+          box.textContent = '';
+          if (kind === 'critical') {
+            var strong = document.createElement('strong');
+            strong.textContent = T.errorTitle;
+            box.appendChild(strong);
+          }
+          var msg = document.createElement('div');
+          msg.className = 'message';
+          msg.textContent = text;
+          box.appendChild(msg);
+          box.hidden = false;
+        }
+        function renderFiles() {
+          $('cert-file').value = state.certFile || '';
+          $('key-file').value = state.keyFile || '';
+          $('cert-file').placeholder = T.none;
+          $('key-file').placeholder = T.none;
+          var on = $('use-tls').checked;
+          ['cert-file', 'key-file', 'pick-cert', 'pick-key'].forEach(function (id) {
+            $(id).disabled = !on;
+          });
+        }
+        function renderDefault() {
+          $('public-url').placeholder = state.defaultUrl;
+          $('public-url-hint').textContent = T.publicUrlHint + ' ' + state.defaultUrl;
+        }
+        function refreshWarning() {
+          window.artelNetwork.evaluate(draft()).then(function (warning) {
+            $('warning').hidden = warning !== 'plain-text';
+          });
+        }
+        function render(view) {
+          var d = view.draft;
+          $('shared').checked = d.shared;
+          $('port').value = String(d.port);
+          $('public-url').value = d.publicUrl;
+          $('use-tls').checked = d.useTls;
+          state.certFile = d.certFile;
+          state.keyFile = d.keyFile;
+          state.defaultUrl = view.defaultPublicUrl;
+          $('access').textContent = view.accessUrl;
+          $('warning').hidden = view.warning !== 'plain-text';
+          $('attached').textContent = T.attached;
+          $('attached').hidden = view.stackMode !== 'attached';
+          renderFiles();
+          renderDefault();
+        }
+
+        $('copy').onclick = function () {
+          window.artelNetwork.copyAccessUrl().then(function () {
+            $('copy').textContent = T.copied;
+            setTimeout(function () {
+              $('copy').textContent = T.copy;
+            }, 1500);
+          });
+        };
+        function pick(kind, key) {
+          window.artelNetwork.pickFile(kind).then(function (file) {
+            if (file === null) return;
+            state[key] = file;
+            renderFiles();
+          });
+        }
+        $('pick-cert').onclick = function () {
+          pick('certificate', 'certFile');
+        };
+        $('pick-key').onclick = function () {
+          pick('key', 'keyFile');
+        };
+        ['shared', 'port', 'public-url', 'use-tls'].forEach(function (id) {
+          $(id).addEventListener('input', function () {
+            if (id === 'use-tls') renderFiles();
+            refreshWarning();
+          });
+        });
+        $('form').addEventListener('submit', function (e) {
+          e.preventDefault();
+        });
+        $('save').onclick = function () {
+          var d = draft();
+          $('result').hidden = true;
+          if (!Number.isInteger(d.port) || d.port < 1 || d.port > 65535) {
+            showResult('critical', T.badPort);
+            return;
+          }
+          if (d.useTls && (d.certFile === null || d.keyFile === null)) {
+            showResult('critical', T.needFiles);
+            return;
+          }
+          $('save').disabled = true;
+          $('save').textContent = T.saving;
+          window.artelNetwork
+            .save(d)
+            .then(function (result) {
+              if (!result.ok) {
+                showResult('critical', result.error);
+                return;
+              }
+              render(result.view);
+              if (result.restartError) {
+                showResult('critical', T.restartFailed + ' ' + result.restartError);
+              } else {
+                showResult('success', result.applied === 'restarted' ? T.restarted : T.nextStart);
+              }
+            })
+            .catch(function (error) {
+              showResult('critical', String(error && error.message ? error.message : error));
+            })
+            .then(function () {
+              $('save').disabled = false;
+              $('save').textContent = T.save;
+            });
+        };
+
+        window.artelNetwork.get().then(render);
+      })();
+    </script>
+  </body>
+</html>

@@ -29,3 +29,26 @@ export function decideNavigation(target: string, appOrigin: string): NavigationD
 export function decideWindowOpen(target: string): 'open-external' | 'block' {
   return isExternallyOpenable(target) ? 'open-external' : 'block';
 }
+
+/** Origins the main window may stay on: the address it loads and the public URL others use. */
+export function allowedOrigins(loadedUrl: string, publicUrl: string | undefined): string[] {
+  const origins = new Set<string>();
+  for (const candidate of [loadedUrl, publicUrl]) {
+    if (candidate === undefined) continue;
+    try {
+      origins.add(new URL(candidate).origin);
+    } catch {
+      // An unparsable URL contributes no origin.
+    }
+  }
+  return [...origins];
+}
+
+/** Like decideNavigation, with several allowed origins. */
+export function decideNavigationAmong(
+  target: string,
+  origins: readonly string[],
+): NavigationDecision {
+  if (origins.some((origin) => isSameOrigin(target, origin))) return 'allow';
+  return isExternallyOpenable(target) ? 'open-external' : 'block';
+}

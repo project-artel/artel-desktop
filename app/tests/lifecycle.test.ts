@@ -26,6 +26,8 @@ function fakeSupervisor(
     startStack,
     stopStack,
     stackStatus: () => Promise.reject(new Error('unused')),
+    readStackSettings: () => Promise.reject(new Error('unused')),
+    writeStackSettings: () => Promise.reject(new Error('unused')),
     logDir: () => '/data/logs',
   };
   return { supervisor, stop, stopStack, startStack };
