@@ -2,3 +2,5 @@ node_modules/
 dist/
 out/
 /runtime/build/
+/app/release/
+/app/build/

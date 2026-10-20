@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ARTEL</title>
+    <style>
+      :root {
+        --bg-canvas: #090c10;
+        --bg-surface: #10151b;
+        --bg-raised: #171d25;
+        --bg-hover: #1d2530;
+        --border-subtle: #27313d;
+        --border-strong: #3b4857;
+        --text-primary: #f4f7fa;
+        --text-secondary: #a7b0bc;
+        --text-muted: #707b88;
+        --action-primary: #24c7e8;
+        --success: #48c78e;
+        --warning: #f2b84b;
+        --critical: #ff634f;
+        --font-sans: 'Inter', 'Pretendard Variable', Pretendard, sans-serif;
+        --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--bg-canvas);
+        color: var(--text-secondary);
+        font: 400 14px/21px var(--font-sans);
+      }
+      main {
+        width: min(480px, calc(100vw - 48px));
+      }
+      h1 {
+        margin: 0 0 4px;
+        color: var(--text-primary);
+        font-size: 22px;
+        line-height: 30px;
+        font-weight: 650;
+      }
+      #summary {
+        margin: 0 0 24px;
+        color: var(--text-secondary);
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+      }
+      li {
+        display: grid;
+        grid-template-columns: 20px 1fr auto;
+        gap: 12px;
+        align-items: baseline;
+        padding: 12px 16px;
+      }
+      li + li {
+        border-top: 1px solid var(--border-subtle);
+      }
+      .icon {
+        font-weight: 600;
+        text-align: center;
+      }
+      .name {
+        color: var(--text-primary);
+      }
+      .label {
+        font-size: 12px;
+        line-height: 18px;
+        font-weight: 450;
+      }
+      .detail {
+        grid-column: 2 / 4;
+        font: 450 12px/18px var(--font-mono);
+        color: var(--text-muted);
+        overflow-wrap: anywhere;
+      }
+      .st-starting .icon,
+      .st-starting .label {
+        color: var(--warning);
+      }
+      .st-ready .icon,
+      .st-ready .label {
+        color: var(--success);
+      }
+      .st-crashed .icon,
+      .st-crashed .label {
+        color: var(--critical);
+      }
+      .st-stopped .icon,
+      .st-stopped .label {
+        color: var(--text-muted);
+      }
+      .st-starting .icon {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #error {
+        display: none;
+        margin-top: 16px;
+        padding: 12px 16px;
+        border: 1px solid var(--critical);
+        border-radius: 8px;
+        background: var(--bg-raised);
+        color: var(--text-primary);
+      }
+      #error .message {
+        font: 450 12px/18px var(--font-mono);
+        overflow-wrap: anywhere;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      button {
+        font: 600 14px/21px var(--font-sans);
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        color: var(--text-primary);
+        background: var(--bg-raised);
+        border: 1px solid var(--border-strong);
+        transition: background 160ms cubic-bezier(0.2, 0, 0, 1);
+      }
+      button:hover {
+        background: var(--bg-hover);
+      }
+      button.primary {
+        background: var(--action-primary);
+        border-color: var(--action-primary);
+        color: #04141a;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--action-primary);
+        outline-offset: 2px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .st-starting .icon {
+          animation: none;
+        }
+        button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">ARTEL</h1>
+      <p id="summary" role="status" aria-live="polite"></p>
+      <ul id="services" aria-label="services"></ul>
+      <div id="error" role="alert">
+        <strong id="error-title"></strong>
+        <div class="message" id="error-message"></div>
+      </div>
+      <div class="actions">
+        <button id="retry" class="primary" hidden></button>
+        <button id="logs"></button>
+      </div>
+    </main>
+    <script>
+      (function () {
+        var ko = (navigator.language || '').toLowerCase().indexOf('ko') === 0;
+        var T = ko
+          ? {
+              starting: 'ARTEL 을 시작하는 중입니다',
+              ready: '준비되었습니다',
+              failed: '시작하지 못했습니다',
+              stopped: '중지되었습니다',
+              errorTitle: '오류',
+              retry: '다시 시도',
+              logs: '로그 폴더 열기',
+              stopped_: '대기',
+              starting_: '시작 중',
+              ready_: '준비됨',
+              crashed_: '중단됨',
+            }
+          : {
+              starting: 'Starting ARTEL',
+              ready: 'Ready',
+              failed: 'ARTEL could not start',
+              stopped: 'Stopped',
+              errorTitle: 'Error',
+              retry: 'Retry',
+              logs: 'Open log folder',
+              stopped_: 'Waiting',
+              starting_: 'Starting',
+              ready_: 'Ready',
+              crashed_: 'Crashed',
+            };
+        var NAMES = {
+          postgres: 'PostgreSQL',
+          orchestration: 'Orchestration',
+          'agent-server': 'Agent server',
+          proxy: 'Console proxy',
+        };
+        var ICONS = { stopped: '○', starting: '◐', ready: '✓', crashed: '✕' };
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        $('retry').textContent = T.retry;
+        $('logs').textContent = T.logs;
+        $('error-title').textContent = T.errorTitle;
+        $('retry').onclick = function () {
+          window.artelStartup.retry();
+        };
+        $('logs').onclick = function () {
+          window.artelStartup.openLogs();
+        };
+        function render(s) {
+          $('summary').textContent = T[s.phase === 'idle' ? 'starting' : s.phase] || '';
+          var list = $('services');
+          list.textContent = '';
+          ['postgres', 'orchestration', 'agent-server', 'proxy'].forEach(function (key) {
+            var v = (s.services && s.services[key]) || { state: 'stopped' };
+            var li = document.createElement('li');
+            li.className = 'st-' + v.state;
+            var icon = document.createElement('span');
+            icon.className = 'icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = ICONS[v.state] || ICONS.stopped;
+            var name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = NAMES[key];
+            var label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = T[v.state + '_'] || v.state;
+            li.appendChild(icon);
+            li.appendChild(name);
+            li.appendChild(label);
+            if (v.detail) {
+              var d = document.createElement('span');
+              d.className = 'detail';
+              d.textContent = v.detail;
+              li.appendChild(d);
+            }
+            list.appendChild(li);
+          });
+          var failed = s.phase === 'failed';
+          $('error').style.display = failed ? 'block' : 'none';
+          $('error-message').textContent = s.error || '';
+          $('retry').hidden = !(failed || s.phase === 'stopped');
+        }
+        window.artelStartup.onState(render);
+        window.artelStartup.getState().then(render);
+      })();
+    </script>
+  </body>
+</html>
