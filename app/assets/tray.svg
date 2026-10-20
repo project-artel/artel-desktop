@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <rect width="64" height="64" rx="8" fill="#F7F4EE"/>
-  <path d="M 52 40 L 52 18 L 32 6 L 12 18 L 12 46 L 30 56" stroke="#20232B" stroke-width="9" stroke-linecap="butt" stroke-linejoin="miter"/>
-  <path d="M 36 56 L 52 46" stroke="#F04B3A" stroke-width="9" stroke-linecap="butt" stroke-linejoin="miter"/>
+  <g transform="translate(3.2 3.2) scale(0.9)">
+    <polygon points="57.28,45.10 57.28,17.40 32.00,2.80 6.72,17.40 6.72,46.60 30.70,60.45 30.70,50.05 15.72,41.40 15.72,22.60 32.00,13.20 48.28,22.60 48.28,39.90" fill="#20232B"/>
+    <polygon points="33.30,50.05 33.30,60.45 55.99,47.35 46.99,42.15" fill="#F04B3A"/>
+  </g>
 </svg>
