@@ -90,10 +90,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Ubuntu 22.04 (glibc 2.35) keeps vector.so at the glibc floor of the PostgreSQL
-          # binaries (2.34). On 24.04 it picks up GLIBC_2.38 through the C23 strtol symbols.
-          - { target: linux-x64, runner: ubuntu-22.04, experimental: false }
-          - { target: linux-arm64, runner: ubuntu-22.04-arm, experimental: false }
+          - { target: linux-x64, runner: ubuntu-latest, experimental: false }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm, experimental: false }
           # macos-13 was retired in 2025; macos-15-intel is the remaining Intel image.
           - { target: darwin-x64, runner: macos-15-intel, experimental: false }
           - { target: darwin-arm64, runner: macos-14, experimental: false }

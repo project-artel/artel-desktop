@@ -47,8 +47,8 @@ runtime/smoke-test.sh runtime/build/out/artel-runtime-0.1.0-linux-x64.tar.gz
 
 | Target | Runner | 비고 |
 | --- | --- | --- |
-| `linux-x64` | `ubuntu-22.04` | glibc 2.35. 24.04 에서 compile 한 `vector.so` 는 C23 `strtol` symbol 때문에 GLIBC 2.38 을 요구한다. PostgreSQL binary 자체는 2.34 를 요구한다. |
-| `linux-arm64` | `ubuntu-22.04-arm` | 같은 이유 |
+| `linux-x64` | `ubuntu-latest` | |
+| `linux-arm64` | `ubuntu-24.04-arm` | |
 | `darwin-x64` | `macos-15-intel` | `macos-13` 은 2025년에 GitHub 에서 사라져 남은 Intel image 를 쓴다. |
 | `darwin-arm64` | `macos-14` | |
 | `win32-x64` | `windows-latest` | |
@@ -66,4 +66,5 @@ linux-x64 `0.1.0` 기준 archive 는 293 MB, 풀면 약 710 MB 입니다. 풀었
 
 - macOS: bundle 안의 Mach-O 파일은 서명이 유효하지 않을 때만 ad-hoc 서명합니다. Developer ID 서명과 notarization 은 desktop 앱 빌드에서 `postgres`, `java`, `python`, 모든 `.dylib` 와 `.so` 를 대상으로 해야 합니다.
 - Windows: 실행 파일이 서명되지 않아 백신 프로그램이 격리할 수 있습니다.
-- Linux: glibc 2.34 미만인 배포판(예: Ubuntu 20.04, Debian 11)에서는 PostgreSQL binary 가 실행되지 않습니다. 로컬에서 최신 배포판으로 빌드한 bundle 은 `vector.so` 가 더 높은 glibc 를 요구하니 배포용은 CI 에서 만듭니다.
+- Linux: PostgreSQL 이 함께 싣고 오는 `libstdc++.so.6` 이 glibc 2.36 을 요구하므로 Ubuntu 22.04, Debian 11, RHEL 9 처럼 glibc 2.36 미만인 배포판에서는 `initdb` 가 실행되지 않습니다. `vector.so` 는 `-std=gnu11` 에 `_GNU_SOURCE` 없이 compile 해 glibc 2.14 까지만 요구하고, `build.sh` 가 이 값이 PostgreSQL 의 요구치를 넘지 않는지 확인합니다.
+- `win32-arm64`: `tiktoken` 과 `cryptography` 는 Windows arm64 wheel 이 없어 Rust 로 source build 됩니다. `cryptography` 는 OpenSSL 도 필요하므로 그대로는 빌드되지 않을 가능성이 큽니다. pgvector 와 Java, Python 자체는 이 target 에서도 빌드됩니다.

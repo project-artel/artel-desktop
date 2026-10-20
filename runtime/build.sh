@@ -195,14 +195,41 @@ EOF
     *)
       # OPTFLAGS="" drops -march=native, so the library runs on any CPU of the target
       # architecture, not only the build machine's.
-      local args=(OPTFLAGS= "PG_CONFIG=$stage/postgres/bin/pg_config")
+      # with_llvm=no skips the JIT bitcode files: the macOS PostgreSQL build was configured
+      # with a Homebrew clang path that does not exist on other machines.
+      local args=(OPTFLAGS= with_llvm=no "PG_CONFIG=$stage/postgres/bin/pg_config")
       # pgxs carries the SDK path of the machine PostgreSQL was built on.
       [ "${target%%-*}" = darwin ] && args+=("PG_SYSROOT=$(xcrun --show-sdk-path)")
+      # On Linux, -D_GNU_SOURCE from pgxs and the gnu23 default of newer GCC both make
+      # strtol resolve to __isoc23_strtol, which needs glibc 2.38. The bundled PostgreSQL
+      # needs only 2.36, so compile as gnu11 without _GNU_SOURCE to keep vector.so at 2.14.
+      [ "${target%%-*}" = linux ] && args+=(CPPFLAGS= COPT=-std=gnu11)
       make -C "$src" -j 4 "${args[@]}"
       make -C "$src" "${args[@]}" install
       ;;
   esac
+  [ "${target%%-*}" = linux ] && check_glibc_floor "$stage/postgres"
   [ -f "$stage/postgres/share/extension/vector.control" ] || die "pgvector did not install vector.control"
+}
+
+# Highest GLIBC_x.y symbol version a file needs.
+glibc_needed() {
+  objdump -T "$1" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -n 1
+}
+
+# vector.so must not need a newer glibc than the PostgreSQL binaries already do.
+check_glibc_floor() {
+  command -v objdump > /dev/null 2>&1 || { log "objdump not found: glibc check skipped"; return; }
+  local floor=0 file needed
+  for file in "$1/bin/postgres" "$1/lib/libstdc++.so.6"; do
+    [ -f "$file" ] || continue
+    needed="$(glibc_needed "$file")"
+    floor="$(printf '%s\n%s\n' "$floor" "$needed" | sort -V | tail -n 1)"
+  done
+  needed="$(glibc_needed "$1/lib/vector.so")"
+  [ "$(printf '%s\n%s\n' "$floor" "$needed" | sort -V | tail -n 1)" = "$floor" ] \
+    || die "vector.so needs glibc $needed, newer than the $floor PostgreSQL needs"
+  log "glibc floor $floor, vector.so needs $needed"
 }
 
 stage_java() {
@@ -247,6 +274,11 @@ stage_python() {
 
   local python
   python="$stage/$(python_path "$target")"
+  # A dependency without a wheel for the target is built from source. Rust builds call
+  # link.exe, and Git Bash puts its own coreutils link.exe ahead of the MSVC linker.
+  if is_windows && command -v cl > /dev/null 2>&1; then
+    PATH="$(dirname "$(command -v cl)"):$PATH"
+  fi
   "$python" -I -m pip install --no-cache-dir --disable-pip-version-check --no-warn-script-location \
     -r "$(native_path "$COMMON_DIR/requirements.txt")"
   # pip is only needed for the install above. The standard library parts below are the IDE,
