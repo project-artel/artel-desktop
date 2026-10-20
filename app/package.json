@@ -1,0 +1,43 @@
+{
+  "name": "@project-artel/desktop",
+  "productName": "ARTEL",
+  "version": "0.0.1",
+  "private": true,
+  "description": "ARTEL desktop app: runs the whole ARTEL stack locally and shows the console in its own window.",
+  "author": "ARTEL <dev@artel.kr>",
+  "homepage": "https://github.com/project-artel/artel-desktop#readme",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/project-artel/artel-desktop.git"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/write-shims.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "dist": "npm run build && electron-builder --config electron-builder.config.mjs",
+    "dist:dir": "npm run build && electron-builder --config electron-builder.config.mjs --dir"
+  },
+  "dependencies": {
+    "@project-artel/cli": "0.0.1-alpha.1",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.1",
+    "electron": "^44.9.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.9.1",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.11"
+  }
+}
