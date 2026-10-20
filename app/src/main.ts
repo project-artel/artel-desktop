@@ -80,6 +80,8 @@ async function startDesktop(): Promise<void> {
   let quitting = false;
 
   const iconPath = path.join(here, '..', 'assets', 'icon.png');
+  // The tray shows the mark at 16 to 22 px, where the app icon's padding would shrink it further.
+  const trayIconPath = path.join(here, '..', 'assets', 'tray.png');
 
   const hardenedPreferences = {
     contextIsolation: true,
@@ -384,7 +386,7 @@ async function startDesktop(): Promise<void> {
 
   await app.whenReady();
   applicationMenu();
-  tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 }));
+  tray = new Tray(nativeImage.createFromPath(trayIconPath).resize({ width: 18, height: 18 }));
   tray.setToolTip('ARTEL');
   tray.on('click', openConsole);
   refreshTray();
