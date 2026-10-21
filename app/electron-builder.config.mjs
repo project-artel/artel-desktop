@@ -3,6 +3,8 @@
 //   Windows: WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD
 // Runtime bundle: ARTEL_RUNTIME_SOURCE overrides the directory copied into resources/runtime.
 
+import { validateRuntime } from './scripts/validate-runtime.mjs';
+
 const macSigned = Boolean(process.env.CSC_LINK);
 const winSigned = Boolean(process.env.WIN_CSC_LINK || process.env.CSC_LINK);
 const notarize =
@@ -16,6 +18,14 @@ const signed = macSigned || winSigned;
 export default {
   appId: 'kr.artel.desktop',
   productName: 'ARTEL',
+  beforePack: async (context) => {
+    const arch = { 1: 'x64', 3: 'arm64' }[context.arch];
+    const target = `${context.electronPlatformName}-${arch}`;
+    await validateRuntime(
+      process.env.ARTEL_RUNTIME_SOURCE ?? `../runtime/build/unpacked/${target}`,
+      target,
+    );
+  },
   copyright: 'ARTEL',
   directories: { output: 'release', buildResources: 'assets' },
   files: ['dist/**', 'static/**', 'assets/**', 'package.json'],
@@ -27,10 +37,7 @@ export default {
   publish: [{ provider: 'github', owner: 'project-artel', repo: 'artel-desktop' }],
   mac: {
     category: 'public.app-category.developer-tools',
-    target: [
-      { target: 'dmg', arch: ['x64', 'arm64'] },
-      { target: 'zip', arch: ['x64', 'arm64'] },
-    ],
+    target: ['dmg', 'zip'],
     extraResources: [
       {
         from: process.env.ARTEL_RUNTIME_SOURCE ?? '../runtime/build/unpacked/darwin-${arch}',
@@ -43,28 +50,31 @@ export default {
     notarize,
   },
   win: {
-    target: [{ target: 'nsis', arch: ['x64', 'arm64'] }],
+    executableName: 'artel',
+    artifactName: 'ARTEL-Setup-${version}-${arch}.${ext}',
+    target: ['nsis'],
     extraResources: [
       {
         from: process.env.ARTEL_RUNTIME_SOURCE ?? '../runtime/build/unpacked/win32-${arch}',
         to: 'runtime',
       },
     ],
-    signAndEditExecutable: winSigned,
+    signExecutable: winSigned,
   },
   nsis: {
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    shortcutName: 'ARTEL',
+    runAfterFinish: true,
     include: 'installer/installer.nsh',
   },
   linux: {
     category: 'Development',
     executableName: 'artel-desktop',
-    target: [
-      { target: 'AppImage', arch: ['x64', 'arm64'] },
-      { target: 'deb', arch: ['x64', 'arm64'] },
-    ],
+    target: ['AppImage', 'deb'],
     extraResources: [
       {
         from: process.env.ARTEL_RUNTIME_SOURCE ?? '../runtime/build/unpacked/linux-${arch}',

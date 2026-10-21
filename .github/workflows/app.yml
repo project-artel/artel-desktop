@@ -9,16 +9,16 @@ on:
     inputs:
       runtime_archive_url:
         description: >-
-          TODO(ARTEL-1145): base URL of the runtime archives, for example
+          Base URL of the runtime archives, for example
           https://github.com/project-artel/artel-desktop/releases/download/runtime-v0.1.0
-          The job appends artel-runtime-<version>-<target>.tar.gz. Leave empty to package
-          with an empty runtime directory (installer config check only, the app will not start).
+          The job appends artel-runtime-<version>-<target>.tar.gz.
+          Both runtime inputs are required for packaging.
         required: false
-        default: ''
+        default: 'https://github.com/project-artel/artel-desktop/releases/download/runtime-v0.1.0'
       runtime_version:
         description: 'Runtime version used to build the archive file name, for example 0.1.0'
         required: false
-        default: ''
+        default: '0.1.0'
       package:
         description: 'Build installers per OS'
         type: boolean
@@ -56,7 +56,7 @@ jobs:
           - os: ubuntu-24.04-arm
             builder_args: --linux --arm64
             target: linux-arm64
-          - os: macos-13
+          - os: macos-15-intel
             builder_args: --mac --x64
             target: darwin-x64
           - os: macos-14
@@ -100,10 +100,10 @@ jobs:
             curl -fsSL -o "$RUNNER_TEMP/$name" "$RUNTIME_BASE_URL/$name"
             curl -fsSL -o "$RUNNER_TEMP/$name.sha256" "$RUNTIME_BASE_URL/$name.sha256"
             (cd "$RUNNER_TEMP" && (sha256sum -c "$name.sha256" 2>/dev/null || shasum -a 256 -c "$name.sha256"))
-            tar -xzf "$RUNNER_TEMP/$name" -C "$dest" --strip-components=1
+            tar -xzf "$RUNNER_TEMP/$name" -C "$dest"
           else
-            echo "No runtime archive URL given: packaging with an empty runtime directory."
-            touch "$dest/.placeholder"
+            echo "A runtime archive URL and version are required." >&2
+            exit 1
           fi
           echo "ARTEL_RUNTIME_SOURCE=$dest" >> "$GITHUB_ENV"
       - run: npm run build

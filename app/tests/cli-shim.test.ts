@@ -28,7 +28,7 @@ describe('shims', () => {
     expect(cmd).toContain('set "ELECTRON_RUN_AS_NODE=1"');
     expect(cmd).toContain('set "ARTEL_RUNTIME_DIR=%RESOURCES%\\runtime"');
     expect(cmd).toContain(
-      '"%RESOURCES%\\..\\ARTEL.exe" "%RESOURCES%\\app.asar.unpacked\\node_modules\\@project-artel\\cli\\dist\\cli.js" %*',
+      '"%RESOURCES%\\..\\artel.exe" "%RESOURCES%\\app.asar.unpacked\\node_modules\\@project-artel\\cli\\dist\\cli.js" %*',
     );
     expect(cmd).toContain('\r\n');
     expect(cmd.replace(/\r\n/g, '')).not.toContain('\n');

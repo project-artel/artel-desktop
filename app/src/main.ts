@@ -48,6 +48,12 @@ if (process.env['ARTEL_RUN_CLI'] === '1') {
 }
 
 async function startDesktop(): Promise<void> {
+  const dataDir = process.env['ARTEL_DATA_DIR'];
+  if (dataDir) {
+    const desktopData = path.join(path.resolve(dataDir), 'desktop');
+    await fs.mkdir(desktopData, { recursive: true });
+    app.setPath('userData', desktopData);
+  }
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -56,6 +62,7 @@ async function startDesktop(): Promise<void> {
   const supervisor = await loadSupervisor();
   const controller = new StackController({
     supervisor,
+    dataDir,
     runtimeDir: resolveRuntimeDir({
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
@@ -117,6 +124,7 @@ async function startDesktop(): Promise<void> {
 
   const networkService = new NetworkSettingsService({
     supervisor,
+    dataDir,
     controller,
     machineName: os.hostname(),
     onSaved: (settings) => {

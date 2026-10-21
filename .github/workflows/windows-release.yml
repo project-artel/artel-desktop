@@ -1,0 +1,114 @@
+name: Windows installers
+
+on:
+  pull_request:
+    paths: ['app/**', '.github/workflows/windows-release.yml']
+  push:
+    tags: ['app-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, arch: x64 }
+          - { runner: windows-11-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Download and verify runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "artel-runtime-0.1.0-win32-$env:TARGET_ARCH.tar.gz"
+          $download = Join-Path $env:RUNNER_TEMP 'runtime-download'
+          $runtime = Join-Path $env:RUNNER_TEMP 'runtime'
+          New-Item -ItemType Directory -Force $download, $runtime | Out-Null
+          gh release download runtime-v0.1.0 --repo project-artel/artel-desktop --pattern "$name*" --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime download failed' }
+          $archive = Join-Path $download $name
+          $expected = (Get-Content "$archive.sha256").Split(' ')[0]
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $expected) { throw 'Checksum mismatch' }
+          tar -xzf $archive -C $runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime extraction failed' }
+          node scripts/validate-runtime.mjs $runtime "win32-$env:TARGET_ARCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime validation failed' }
+          "ARTEL_RUNTIME_SOURCE=$runtime" >> $env:GITHUB_ENV
+      - run: npm run build
+      - name: Build installer
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: npx electron-builder --config electron-builder.config.mjs --win "--$env:TARGET_ARCH" --publish never
+      - name: Install and verify files
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $installer = (Resolve-Path "release/ARTEL-Setup-$version-$env:TARGET_ARCH.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP 'ARTEL installed'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/currentuser', "/D=$installDir") -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          if (!(Test-Path "$installDir/artel.exe")) { throw 'artel.exe missing after installation' }
+          node scripts/validate-runtime.mjs "$installDir/resources/runtime" "win32-$env:TARGET_ARCH"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed runtime invalid' }
+          node scripts/verify-installed-cli.mjs $installDir
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled CLI failed' }
+      - name: Checksums
+        run: |
+          Get-ChildItem release -Filter '*.exe' | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content -Encoding utf8NoBOM "$($_.FullName).sha256"
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-installer-${{ matrix.arch }}
+          path: |
+            app/release/*.exe
+            app/release/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: windows-installer-*
+          path: release
+          merge-multiple: true
+      - name: Publish Windows installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          test "$TAG" = "app-v$version"
+          (cd release && sha256sum --check *.sha256)
+          gh release create "$TAG" release/* --verify-tag --title "ARTEL $version" --notes-file app/RELEASE.md --latest

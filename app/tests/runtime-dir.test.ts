@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resolveRuntimeDir } from '../src/runtime-dir.js';
 import { shouldCheckForUpdates } from '../src/update-policy.js';
@@ -10,7 +11,7 @@ describe('resolveRuntimeDir', () => {
         resourcesPath: '/app/resources',
         env: { ARTEL_RUNTIME_DIR: '/x' },
       }),
-    ).toBe('/app/resources/runtime');
+    ).toBe(path.join('/app/resources', 'runtime'));
   });
   it('uses ARTEL_RUNTIME_DIR in development', () => {
     expect(

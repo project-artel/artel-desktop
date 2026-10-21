@@ -12,7 +12,7 @@ export interface ShimNames {
 export const DEFAULT_SHIM_NAMES: ShimNames = {
   macExecutable: 'ARTEL',
   linuxExecutable: 'artel-desktop',
-  windowsExecutable: 'ARTEL.exe',
+  windowsExecutable: 'artel.exe',
 };
 
 const CLI_RELATIVE = [

@@ -1,7 +1,7 @@
 {
   "name": "@project-artel/desktop",
   "productName": "ARTEL",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "ARTEL desktop app: runs the whole ARTEL stack locally and shows the console in its own window.",
   "author": "ARTEL <dev@artel.kr>",
@@ -19,18 +19,19 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/write-shims.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/validate-runtime.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dist": "npm run build && electron-builder --config electron-builder.config.mjs",
     "dist:dir": "npm run build && electron-builder --config electron-builder.config.mjs --dir"
   },
   "dependencies": {
-    "@project-artel/cli": "0.0.1-alpha.1",
+    "@project-artel/cli": "file:vendor/project-artel-cli-0.0.1-alpha.1.tgz",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.4.1",
     "electron": "^44.9.1",
     "electron-builder": "^26.15.3",
