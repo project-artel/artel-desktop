@@ -53,7 +53,7 @@ runtime/smoke-test.sh runtime/build/out/artel-runtime-0.1.0-linux-x64.tar.gz
 | `darwin-x64` | `macos-15-intel` | `macos-13` 은 2025년에 GitHub 에서 사라져 남은 Intel image 를 쓴다. |
 | `darwin-arm64` | `macos-14` | |
 | `win32-x64` | `windows-latest` | |
-| `win32-arm64` | `windows-11-arm` | `continue-on-error: true`. 한 번도 green 으로 확인하지 못했으므로 실패해도 workflow 는 통과하고, release 에서 빠진다. |
+| `win32-arm64` | `windows-11-arm` | ARM64 static OpenSSL 을 빌드한 뒤 Python 의존성을 설치한다. 다른 target 과 동일하게 실패하면 release 를 중단한다. |
 
 ## Release
 
@@ -68,4 +68,4 @@ CI 의 archive 크기(2026-10-20, `develop` 기준): `linux-x64` 293 MB, `linux-
 - macOS: bundle 안의 Mach-O 파일은 서명이 유효하지 않을 때만 ad-hoc 서명합니다. Developer ID 서명과 notarization 은 desktop 앱 빌드에서 `postgres`, `java`, `python`, 모든 `.dylib` 와 `.so` 를 대상으로 해야 합니다.
 - Windows: 실행 파일이 서명되지 않아 백신 프로그램이 격리할 수 있습니다.
 - Linux: PostgreSQL 이 함께 싣고 오는 `libstdc++.so.6` 이 glibc 2.36 을 요구하므로 Ubuntu 22.04, Debian 11, RHEL 9 처럼 glibc 2.36 미만인 배포판에서는 `initdb` 가 실행되지 않습니다. `vector.so` 는 `-std=gnu11` 에 `_GNU_SOURCE` 없이 compile 해 glibc 2.14 까지만 요구하고, `build.sh` 가 이 값이 PostgreSQL 의 요구치를 넘지 않는지 확인합니다.
-- `win32-arm64`: 기존 CI 에서 `cryptography` source build 가 OpenSSL 을 찾지 못했습니다. ARM64 static OpenSSL 빌드와 `OPENSSL_DIR` 설정을 추가했으며, smoke test 는 압축을 푼 Python 으로 `cryptography` 의 AES-GCM 암호화·복호화를 확인합니다. 수정 후 ARM64 runner 의 전체 build 와 smoke test 통과 여부는 아직 확인하지 않았습니다.
+- `win32-arm64`: 기존 CI 에서 `cryptography` source build 가 OpenSSL 을 찾지 못했습니다. ARM64 static OpenSSL 빌드와 `OPENSSL_DIR` 설정을 추가했으며, smoke test 는 압축을 푼 Python 으로 `cryptography` 의 AES-GCM 암호화·복호화를 확인합니다. 2026-10-21 [CI run 39559060851](https://github.com/project-artel/artel-desktop/actions/runs/39559060851) 에서 6개 target 모두 build 와 smoke test 를 통과했습니다.

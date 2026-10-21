@@ -84,19 +84,17 @@ jobs:
     needs: common
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
-    # win32-arm64 is allowed to fail until its first green run; the other five must pass.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { target: linux-x64, runner: ubuntu-latest, experimental: false }
-          - { target: linux-arm64, runner: ubuntu-24.04-arm, experimental: false }
+          - { target: linux-x64, runner: ubuntu-latest }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm }
           # macos-13 was retired in 2025; macos-15-intel is the remaining Intel image.
-          - { target: darwin-x64, runner: macos-15-intel, experimental: false }
-          - { target: darwin-arm64, runner: macos-14, experimental: false }
-          - { target: win32-x64, runner: windows-latest, msvc: x64, experimental: false }
-          - { target: win32-arm64, runner: windows-11-arm, msvc: arm64, experimental: true }
+          - { target: darwin-x64, runner: macos-15-intel }
+          - { target: darwin-arm64, runner: macos-14 }
+          - { target: win32-x64, runner: windows-latest, msvc: x64 }
+          - { target: win32-arm64, runner: windows-11-arm, msvc: arm64 }
     defaults:
       run:
         shell: bash
