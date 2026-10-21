@@ -1,6 +1,5 @@
-// Stand-in for `@project-artel/cli/supervisor`, copied from section 3 of
-// .plan/general/2026-10-20-package-artel-as-headless-and-desktop-app.md.
-// Delete this file once the published package ships its own declarations.
+// The supervisor API used by the desktop controller and its test doubles.
+// supervisor.ts checks the bundled CLI implementation against this interface.
 
 export type ServiceName = 'postgres' | 'orchestration' | 'agent-server' | 'proxy';
 export type ServiceState = 'stopped' | 'starting' | 'ready' | 'crashed';

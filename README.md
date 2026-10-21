@@ -9,6 +9,20 @@ ARTEL 전체 stack 을 Docker 없이 실행하는 desktop 앱과 runtime bundle 
 
 계획: workspace 저장소의 `.plan/general/2026-10-20-package-artel-as-headless-and-desktop-app.md`.
 
+## OS별 앱 설치
+
+[앱 release](https://github.com/project-artel/artel-desktop/releases/tag/app-v0.1.0)에서
+일반 Intel·AMD PC는 `ARTEL-Setup-0.1.0-x64.exe`, ARM64 PC는 `ARTEL-Setup-0.1.0-arm64.exe`를 실행합니다.
+설치 후 바탕화면이나 시작 메뉴의 **ARTEL**을 열면 `artel.exe`가 내장 서비스를 시작합니다.
+처음 표시되는 로그인 화면의 **Create account**에서 첫 계정을 만드세요.
+Docker·Node·Java·Python을 따로 설치할 필요는 없습니다.
+
+`runtime-v*` release의 `.tar.gz`는 앱 설치 파일이 아니라 앱 안에 들어가는 runtime입니다.
+모든 OS의 앱 설치 파일은 `app-v*` release에 있습니다. 현재 빌드는 Authenticode 서명이 없어
+Windows에서 게시자 확인 경고가 나타날 수 있습니다.
+
+macOS는 Intel 또는 Apple Silicon용 `.dmg`를 열어 **ARTEL.app**을 Applications로 옮깁니다. Linux는 CPU에 맞는 `.AppImage` 또는 `.deb`를 설치합니다. 자세한 파일 목록과 서명 안내는 [release 안내](app/RELEASE.md)에 있습니다.
+
 ## app/
 
 ```sh
@@ -19,8 +33,10 @@ npm run dist:dir   # `ARTEL_RUNTIME_SOURCE=<runtime 디렉터리>` 로 runtime �
 ```
 
 - 개발 중에는 `ARTEL_RUNTIME_DIR` 로 runtime 디렉터리를 지정합니다. 설치된 앱은 `resources/runtime` 을 씁니다.
-- supervisor 는 `@project-artel/cli/supervisor` 가 publish 되기 전까지 `app/src/supervisor-types.ts` 의 타입과 `app/src/supervisor.ts` 의 동적 import 로 연결합니다.
+- supervisor 는 고정된 CLI source commit의 패키지를 사용합니다. 출처와 재빌드 명령은 [`app/vendor/README.md`](app/vendor/README.md)에 있습니다.
+- `ARTEL_DATA_DIR`로 서비스와 Electron 데이터를 별도 디렉터리에 저장할 수 있습니다. 기본 서비스 데이터 경로는 Windows의 `%LOCALAPPDATA%\ARTEL`입니다.
 - 서명은 `CSC_LINK`, `WIN_CSC_LINK`, `APPLE_*` 환경 변수가 있을 때만 켜지고, 서명되지 않은 build 는 update 확인을 하지 않습니다.
+- `app-v<version>` tag는 Windows·macOS·Linux의 x64·ARM64 설치 파일을 빌드하고 패키지 및 내장 CLI를 검사한 뒤 release합니다. `app/package.json`의 version과 tag가 같아야 합니다.
 
 ## License
 
