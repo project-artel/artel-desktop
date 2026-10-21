@@ -19,6 +19,11 @@ export default {
   appId: 'kr.artel.desktop',
   productName: 'ARTEL',
   beforePack: async (context) => {
+    // Nsis7z cannot decode the ARM64 filter selected by newer 7za versions.
+    // https://github.com/electron-userland/electron-builder/issues/9983
+    if (context.electronPlatformName === 'win32') {
+      process.env.ELECTRON_BUILDER_7Z_FILTER = 'BCJ';
+    }
     const arch = { 1: 'x64', 3: 'arm64' }[context.arch];
     const target = `${context.electronPlatformName}-${arch}`;
     await validateRuntime(
