@@ -36,6 +36,7 @@ export default {
   extraResources: [{ from: 'build/bin', to: 'bin', filter: ['artel', 'artel.cmd'] }],
   publish: [{ provider: 'github', owner: 'project-artel', repo: 'artel-desktop' }],
   mac: {
+    artifactName: 'ARTEL-${version}-macOS-${arch}.${ext}',
     category: 'public.app-category.developer-tools',
     target: ['dmg', 'zip'],
     extraResources: [
@@ -72,6 +73,7 @@ export default {
     include: 'installer/installer.nsh',
   },
   linux: {
+    artifactName: 'ARTEL-${version}-Linux-${arch}.${ext}',
     category: 'Development',
     executableName: 'artel-desktop',
     target: ['AppImage', 'deb'],

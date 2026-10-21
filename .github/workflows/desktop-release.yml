@@ -1,10 +1,10 @@
-name: Windows installers
+name: Desktop installers
 
 on:
   pull_request:
-    paths: ['app/**', '.github/workflows/windows-release.yml']
+    paths: ["app/**", ".github/workflows/desktop-release.yml"]
   push:
-    tags: ['app-v*']
+    tags: ["app-v*"]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: '24'
+          node-version: "24"
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
@@ -90,9 +90,117 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {
+              runner: ubuntu-latest,
+              platform: linux,
+              arch: x64,
+              builder: linux,
+            }
+          - {
+              runner: ubuntu-24.04-arm,
+              platform: linux,
+              arch: arm64,
+              builder: linux,
+            }
+          - {
+              runner: macos-15-intel,
+              platform: darwin,
+              arch: x64,
+              builder: mac,
+            }
+          - { runner: macos-14, platform: darwin, arch: arm64, builder: mac }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck && npm run lint && npm test
+      - name: Download and verify runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.platform }}-${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          name="artel-runtime-0.1.0-$TARGET.tar.gz"
+          download="$RUNNER_TEMP/runtime-download"
+          runtime="$RUNNER_TEMP/runtime"
+          mkdir -p "$download" "$runtime"
+          gh release download runtime-v0.1.0 --repo project-artel/artel-desktop --pattern "$name*" --dir "$download"
+          (cd "$download" && shasum -a 256 --check "$name.sha256")
+          tar -xzf "$download/$name" -C "$runtime"
+          node scripts/validate-runtime.mjs "$runtime" "$TARGET"
+          echo "ARTEL_RUNTIME_SOURCE=$runtime" >> "$GITHUB_ENV"
+      - run: npm run build
+      - name: Build installers
+        run: npx electron-builder --config electron-builder.config.mjs --${{ matrix.builder }} --${{ matrix.arch }} --publish never
+      - name: Verify macOS disk image and bundled CLI
+        if: matrix.platform == 'darwin'
+        env:
+          TARGET: darwin-${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mount="$RUNNER_TEMP/ARTEL mounted"
+          hdiutil attach release/*.dmg -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          installed="$RUNNER_TEMP/ARTEL installed.app"
+          ditto "$mount/ARTEL.app" "$installed"
+          node scripts/validate-runtime.mjs "$installed/Contents/Resources/runtime" "$TARGET"
+          "$installed/Contents/Resources/bin/artel" --version
+          unzip -tq release/*.zip
+      - name: Verify Linux packages and bundled CLI
+        if: matrix.platform == 'linux'
+        env:
+          TARGET: linux-${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ./release/*.deb
+          node scripts/validate-runtime.mjs /opt/ARTEL/resources/runtime "$TARGET"
+          artel --version
+          image=$(realpath release/*.AppImage)
+          chmod +x "$image"
+          extracted="$RUNNER_TEMP/AppImage extracted"
+          mkdir -p "$extracted"
+          (cd "$extracted" && "$image" --appimage-extract >/dev/null)
+          node scripts/validate-runtime.mjs "$extracted/squashfs-root/resources/runtime" "$TARGET"
+          "$extracted/squashfs-root/resources/bin/artel" --version
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd release
+          for file in *.dmg *.zip *.AppImage *.deb; do
+            [ -f "$file" ] || continue
+            shasum -a 256 "$file" > "$file.sha256"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-installer-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            app/release/*.dmg
+            app/release/*.zip
+            app/release/*.AppImage
+            app/release/*.deb
+            app/release/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+
   release:
     if: startsWith(github.ref, 'refs/tags/app-v')
-    needs: windows
+    needs: [windows, unix]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,10 +208,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          pattern: windows-installer-*
+          pattern: "*installer-*"
           path: release
           merge-multiple: true
-      - name: Publish Windows installers
+      - name: Publish desktop installers
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
