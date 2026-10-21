@@ -114,6 +114,22 @@ jobs:
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: ${{ matrix.msvc }}
+      - name: Build static OpenSSL for Windows arm64
+        if: matrix.target == 'win32-arm64'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $triplet = 'arm64-windows-static-md'
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install "openssl:$triplet" --classic
+          if ($LASTEXITCODE -ne 0) { throw 'OpenSSL build failed' }
+          $opensslRoot = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed/$triplet"
+          foreach ($file in @('include/openssl/ssl.h', 'lib/libssl.lib', 'lib/libcrypto.lib')) {
+            if (!(Test-Path (Join-Path $opensslRoot $file))) {
+              throw "OpenSSL build output missing: $file"
+            }
+          }
+          "OPENSSL_DIR=$opensslRoot" >> $env:GITHUB_ENV
+          "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
       - name: Build bundle
         run: bash runtime/build.sh bundle "${{ matrix.target }}" "${{ needs.common.outputs.version }}"
       - name: Smoke test

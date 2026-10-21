@@ -99,6 +99,15 @@ grep -rqF __ARTEL_ORCHESTRATION_URL__ "$runtime/$(manifest_get homeDir)" || die 
 log "manifest ok: target $(manifest_get target), version $(manifest_get version)"
 
 bin() { printf '%s/%s' "$runtime" "$(manifest_get "$1")"; }
+# Exercise the native OpenSSL binding after extracting the bundle.
+"$(bin python)" -I -c '
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+cipher = AESGCM(AESGCM.generate_key(bit_length=256))
+nonce = bytes(12)
+message = b"artel-runtime-smoke"
+assert cipher.decrypt(nonce, cipher.encrypt(nonce, message, None), None) == message
+'
+log "cryptography AES-GCM round trip ok"
 pg_ctl="$(bin pg_ctl)"
 pg_bin="$(dirname "$pg_ctl")"
 exe="$(exe_suffix "$(manifest_get target)")"

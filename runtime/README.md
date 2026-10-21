@@ -27,6 +27,7 @@ runtime/smoke-test.sh runtime/build/out/artel-runtime-0.1.0-linux-x64.tar.gz
 - 소스 저장소와 ref 는 `ARTEL_ORCHESTRATION_REPO`/`_REF`, `ARTEL_AGENT_SERVER_REPO`/`_REF`, `ARTEL_HOME_REPO`/`_REF` 로 바꿉니다. 기본값은 각 저장소의 `develop` 이고, 저장소 자리에 로컬 경로를 줄 수도 있습니다. 빌드한 commit SHA 는 `manifest.json` 의 `sources` 에 기록됩니다.
 - 내려받은 파일은 `runtime/build/cache/` 에 남고, 쓰기 전에 매번 checksum 을 확인합니다.
 - Windows 에서는 Visual Studio 개발자 환경(`cl`, `nmake`)이 잡힌 상태에서 Git Bash 로 실행합니다.
+- Windows arm64 에서는 `vcpkg install openssl:arm64-windows-static-md --classic` 으로 OpenSSL 을 빌드하고, `OPENSSL_DIR` 을 vcpkg 의 `installed/arm64-windows-static-md` 경로로, `OPENSSL_STATIC=1` 로 설정합니다. CI 는 bundle 빌드 전에 이 단계를 실행합니다. static OpenSSL 을 사용하므로 별도 OpenSSL DLL 을 배포할 필요가 없습니다.
 - `smoke-test.sh --skip-services` 는 postgres 와 pgvector 만 확인합니다. orchestration 과 agent-server 는 bundled mode 환경 변수(`ARTEL_STORE=postgres`, `ARTEL_STORAGE=filesystem`, `SESSION_STORE=memory`)로 띄우고, `GET /api/auth/me` 가 어떤 status 든 응답하는지, `GET /health` 가 200 인지 확인합니다.
 
 ## 구성 요소 출처
@@ -67,4 +68,4 @@ CI 의 archive 크기(2026-10-20, `develop` 기준): `linux-x64` 293 MB, `linux-
 - macOS: bundle 안의 Mach-O 파일은 서명이 유효하지 않을 때만 ad-hoc 서명합니다. Developer ID 서명과 notarization 은 desktop 앱 빌드에서 `postgres`, `java`, `python`, 모든 `.dylib` 와 `.so` 를 대상으로 해야 합니다.
 - Windows: 실행 파일이 서명되지 않아 백신 프로그램이 격리할 수 있습니다.
 - Linux: PostgreSQL 이 함께 싣고 오는 `libstdc++.so.6` 이 glibc 2.36 을 요구하므로 Ubuntu 22.04, Debian 11, RHEL 9 처럼 glibc 2.36 미만인 배포판에서는 `initdb` 가 실행되지 않습니다. `vector.so` 는 `-std=gnu11` 에 `_GNU_SOURCE` 없이 compile 해 glibc 2.14 까지만 요구하고, `build.sh` 가 이 값이 PostgreSQL 의 요구치를 넘지 않는지 확인합니다.
-- `win32-arm64`: `tiktoken` 과 `cryptography` 는 Windows arm64 wheel 이 없어 Rust 로 source build 됩니다. `tiktoken` 은 빌드되지만 `cryptography` 는 OpenSSL 을 찾지 못해 실패합니다(`openssl-sys`: `Could not find directory of OpenSSL installation`). OpenSSL arm64 를 받아 `OPENSSL_DIR` 을 주는 단계가 필요합니다. PostgreSQL, pgvector, Java 는 이 target 에서도 빌드됩니다.
+- `win32-arm64`: 기존 CI 에서 `cryptography` source build 가 OpenSSL 을 찾지 못했습니다. ARM64 static OpenSSL 빌드와 `OPENSSL_DIR` 설정을 추가했으며, smoke test 는 압축을 푼 Python 으로 `cryptography` 의 AES-GCM 암호화·복호화를 확인합니다. 수정 후 ARM64 runner 의 전체 build 와 smoke test 통과 여부는 아직 확인하지 않았습니다.
