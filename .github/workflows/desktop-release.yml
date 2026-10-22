@@ -6,12 +6,19 @@ on:
   push:
     tags: ["app-v*"]
   workflow_dispatch:
+    inputs:
+      installer_run_id:
+        description: "Reuse a completed candidate installer run for upgrade verification"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   windows:
+    if: inputs.installer_run_id == ''
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +102,7 @@ jobs:
           compression-level: 0
 
   unix:
+    if: inputs.installer_run_id == ''
     strategy:
       fail-fast: false
       matrix:
@@ -213,6 +221,7 @@ jobs:
 
   upgrade:
     needs: [windows]
+    if: ${{ !cancelled() && (needs.windows.result == 'success' || inputs.installer_run_id != '') }}
     runs-on: windows-latest
     timeout-minutes: 35
     defaults:
@@ -231,59 +240,47 @@ jobs:
         with:
           name: windows-installer-x64
           path: app/release
-      - name: Install released 0.1.0 and create persistent data
+          run-id: ${{ inputs.installer_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify upgrades as a standard Windows user
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $download = Join-Path $env:RUNNER_TEMP 'baseline'
-          $installed = Join-Path $env:RUNNER_TEMP 'ARTEL upgrade'
-          $data = Join-Path $env:RUNNER_TEMP 'ARTEL upgrade data'
-          New-Item -ItemType Directory -Force $download | Out-Null
-          gh release download app-v0.1.0 --repo project-artel/artel-desktop --pattern 'ARTEL-Setup-0.1.0-x64.exe*' --dir $download
-          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
-          $installer = Join-Path $download 'ARTEL-Setup-0.1.0-x64.exe'
-          $expected = (Get-Content "$installer.sha256").Split(' ')[0]
-          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $expected) { throw 'Baseline checksum mismatch' }
-          $process = Start-Process $installer -ArgumentList @('/S', '/currentuser', "/D=$installed") -WindowStyle Hidden -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw 'Baseline install failed' }
-          node scripts/verify-upgrade.mjs seed "$installed/artel.exe" $data 0.1.0
-          if ($LASTEXITCODE -ne 0) { throw 'Baseline data creation failed' }
-          "UPGRADE_INSTALL_DIR=$installed" >> $env:GITHUB_ENV
-          "UPGRADE_DATA_DIR=$data" >> $env:GITHUB_ENV
-      - name: Upgrade with release installer and verify existing data
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $installer = (Resolve-Path "release/ARTEL-Setup-$version-x64.exe").Path
-          $process = Start-Process $installer -ArgumentList @('/S', '/currentuser', "/D=$env:UPGRADE_INSTALL_DIR") -WindowStyle Hidden -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw 'Upgrade install failed' }
-          node scripts/verify-upgrade.mjs verify "$env:UPGRADE_INSTALL_DIR/artel.exe" $env:UPGRADE_DATA_DIR $version
-          if ($LASTEXITCODE -ne 0) { throw 'Data preservation failed' }
-      - name: Build next version only for automatic update verification
-        env:
-          TARGET_ARCH: x64
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          $next = node -e "const s=require('semver');process.stdout.write(s.inc(process.argv[1],'patch'))" $version
-          $env:ARTEL_RUNTIME_SOURCE = "$env:UPGRADE_INSTALL_DIR/resources/runtime"
-          npm run build
-          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
-          npx electron-builder --config electron-builder.config.mjs --win --x64 --publish never "--config.extraMetadata.version=$next" --config.directories.output=build/update-target
-          if ($LASTEXITCODE -ne 0) { throw 'Update target build failed' }
-          "UPGRADE_TARGET_VERSION=$next" >> $env:GITHUB_ENV
-      - name: Download and install through the app and verify preserved data
-        run: |
-          node scripts/verify-upgrade.mjs auto "$env:UPGRADE_INSTALL_DIR/artel.exe" $env:UPGRADE_DATA_DIR $env:UPGRADE_TARGET_VERSION build/update-target
-          if ($LASTEXITCODE -ne 0) { throw 'Automatic update failed' }
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'upgrade-test'
+          $appDir = (Get-Location).Path
+          New-Item -ItemType Directory -Force $work | Out-Null
+          gh release download app-v0.1.0 --repo project-artel/artel-desktop --pattern 'ARTEL-Setup-0.1.0-x64.exe*' --dir $work
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
+          $installer = Join-Path $work 'ARTEL-Setup-0.1.0-x64.exe'
+          $expected = (Get-Content "$installer.sha256").Split(' ')[0]
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $expected) { throw 'Baseline checksum mismatch' }
+          $password = 'Artel-' + [Guid]::NewGuid().ToString('N') + '!'
+          Write-Output "::add-mask::$password"
+          $secure = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name 'artel-upgrade' -Password $secure -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group 'Users' -Member 'artel-upgrade'
+          $account = "$env:COMPUTERNAME\artel-upgrade"
+          icacls $work /grant "${account}:(OI)(CI)M" /T /Q | Out-Null
+          icacls $appDir /grant "${account}:(OI)(CI)M" /T /Q | Out-Null
+          $credential = [PSCredential]::new($account, $secure)
+          $node = (Get-Command node.exe).Source
+          $script = Join-Path $appDir 'scripts/verify-windows-upgrade.ps1'
+          $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"", '-AppDir', "`"$appDir`"", '-WorkDir', "`"$work`"", '-BaselineInstaller', "`"$installer`"", '-NodePath', "`"$node`"")
+          $process = Start-Process powershell.exe -Credential $credential -LoadUserProfile -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput "$work/stdout.log" -RedirectStandardError "$work/stderr.log"
+          if (-not $process.WaitForExit(1500000)) { throw 'Upgrade verification timed out' }
+          Get-Content "$work/stdout.log"
+          Get-Content "$work/stderr.log"
+          if ($process.ExitCode -ne 0) { throw "Upgrade verification failed: $($process.ExitCode)" }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: upgrade-evidence
           path: |
-            ${{ runner.temp }}/ARTEL upgrade data/upgrade-report.json
-            ${{ runner.temp }}/ARTEL upgrade data/upgrade-*.png
+            ${{ runner.temp }}/upgrade-test/data/upgrade-report.json
+            ${{ runner.temp }}/upgrade-test/data/upgrade-*.png
           if-no-files-found: warn
 
   release:
