@@ -31,17 +31,33 @@ describe('resolveRuntimeDir', () => {
 });
 
 describe('shouldCheckForUpdates', () => {
-  it('requires a packaged, signed build', () => {
-    expect(shouldCheckForUpdates({ packaged: true, signed: true, env: {} })).toBe(true);
-    expect(shouldCheckForUpdates({ packaged: true, signed: false, env: {} })).toBe(false);
-    expect(shouldCheckForUpdates({ packaged: false, signed: true, env: {} })).toBe(false);
-  });
-  it('can be switched off by the environment', () => {
+  it('macOS는 설치된 서명 빌드에서만 확인한다', () => {
     expect(
-      shouldCheckForUpdates({ packaged: true, signed: true, env: { ARTEL_DISABLE_UPDATES: '1' } }),
+      shouldCheckForUpdates({ platform: 'darwin', packaged: true, signed: true, env: {} }),
+    ).toBe(true);
+    expect(
+      shouldCheckForUpdates({ platform: 'darwin', packaged: true, signed: false, env: {} }),
     ).toBe(false);
     expect(
-      shouldCheckForUpdates({ packaged: true, signed: true, env: { ARTEL_DISABLE_UPDATES: '0' } }),
+      shouldCheckForUpdates({ platform: 'darwin', packaged: false, signed: true, env: {} }),
+    ).toBe(false);
+  });
+  it('환경 변수로 업데이트 확인을 끈다', () => {
+    expect(
+      shouldCheckForUpdates({
+        platform: 'darwin',
+        packaged: true,
+        signed: true,
+        env: { ARTEL_DISABLE_UPDATES: '1' },
+      }),
+    ).toBe(false);
+    expect(
+      shouldCheckForUpdates({
+        platform: 'darwin',
+        packaged: true,
+        signed: true,
+        env: { ARTEL_DISABLE_UPDATES: '0' },
+      }),
     ).toBe(true);
   });
 });

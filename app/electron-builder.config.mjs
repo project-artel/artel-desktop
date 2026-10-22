@@ -12,7 +12,9 @@ const notarize =
   Boolean(
     process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID,
   );
-const signed = macSigned || winSigned;
+const signed =
+  process.platform === 'darwin' ? macSigned : process.platform === 'win32' && winSigned;
+const updateChannel = `latest-${process.env.TARGET_ARCH ?? process.arch}`;
 
 /** @type {import('electron-builder').Configuration} */
 export default {
@@ -39,7 +41,10 @@ export default {
   asarUnpack: ['node_modules/**'],
   extraMetadata: { artelSigned: signed },
   extraResources: [{ from: 'build/bin', to: 'bin', filter: ['artel', 'artel.cmd'] }],
-  publish: [{ provider: 'github', owner: 'project-artel', repo: 'artel-desktop' }],
+  publish: [
+    { provider: 'github', owner: 'project-artel', repo: 'artel-desktop', channel: updateChannel },
+  ],
+  generateUpdatesFilesForAllChannels: false,
   mac: {
     artifactName: 'ARTEL-${version}-macOS-${arch}.${ext}',
     category: 'public.app-category.developer-tools',
@@ -68,6 +73,7 @@ export default {
     signExecutable: winSigned,
   },
   nsis: {
+    deleteAppDataOnUninstall: false,
     oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,

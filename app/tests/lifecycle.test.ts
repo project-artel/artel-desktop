@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { StackController, type StartupState } from '../src/lifecycle.js';
 import type {
   RunningStack,
+  StackStatus,
   SupervisorApi,
   SupervisorEvent,
   SupervisorOptions,
@@ -136,5 +137,61 @@ describe('StackController', () => {
     const { supervisor, stop } = fakeSupervisor();
     await new StackController({ supervisor }).quit();
     expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('업데이트는 stack 종료 후 백업하고 새 시작을 막는다', async () => {
+    const { supervisor, stop, startStack } = fakeSupervisor();
+    supervisor.stackStatus = vi.fn((): Promise<StackStatus> =>
+      Promise.resolve({
+        running: false,
+        services: {
+          postgres: 'stopped',
+          orchestration: 'stopped',
+          'agent-server': 'stopped',
+          proxy: 'stopped',
+        },
+      }),
+    );
+    const controller = new StackController({ supervisor });
+    await controller.start();
+    const backup = vi.fn(async () => {});
+    await controller.prepareUpdate(backup);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(backup.mock.invocationCallOrder[0]!);
+    await controller.start();
+    expect(startStack).toHaveBeenCalledTimes(1);
+  });
+
+  it('CLI stack에 연결된 상태에서는 업데이트를 차단한다', async () => {
+    const { supervisor, stopStack } = fakeSupervisor({ attached: true });
+    const controller = new StackController({ supervisor });
+    await controller.start();
+    const backup = vi.fn(async () => {});
+    await expect(controller.prepareUpdate(backup)).rejects.toThrow('CLI');
+    expect(backup).not.toHaveBeenCalled();
+    expect(stopStack).not.toHaveBeenCalled();
+  });
+
+  it('종료 실패 후 handle을 유지하고 업데이트 재시도에서 다시 종료한다', async () => {
+    const { supervisor, stop } = fakeSupervisor();
+    supervisor.stackStatus = vi.fn((): Promise<StackStatus> =>
+      Promise.resolve({
+        running: false,
+        services: {
+          postgres: 'stopped',
+          orchestration: 'stopped',
+          'agent-server': 'stopped',
+          proxy: 'stopped',
+        },
+      }),
+    );
+    stop.mockRejectedValueOnce(new Error('stop failed'));
+    const controller = new StackController({ supervisor });
+    await controller.start();
+    const backup = vi.fn(async () => {});
+    await expect(controller.prepareUpdate(backup)).rejects.toThrow('stop failed');
+    expect(backup).not.toHaveBeenCalled();
+    await controller.prepareUpdate(backup);
+    expect(stop).toHaveBeenCalledTimes(2);
+    expect(backup).toHaveBeenCalledTimes(1);
   });
 });
