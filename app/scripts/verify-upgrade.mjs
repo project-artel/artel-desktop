@@ -217,9 +217,10 @@ if (mode === 'seed') {
       'initial check',
     );
     await app.evaluate(({ app, dialog }, url) => {
-      const { autoUpdater } = require(
-        require('node:path').join(app.getAppPath(), 'node_modules/electron-updater'),
-      );
+      const require = process
+        .getBuiltinModule('module')
+        .createRequire(`${app.getAppPath()}/package.json`);
+      const { autoUpdater } = require('electron-updater');
       autoUpdater.setFeedURL({ provider: 'generic', url, channel: `latest-${process.arch}` });
       autoUpdater.disableDifferentialDownload = true;
       autoUpdater.autoRunAppAfterInstall = false;
