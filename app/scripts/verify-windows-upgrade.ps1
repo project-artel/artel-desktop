@@ -5,12 +5,12 @@ param(
   [Parameter(Mandatory)][string]$NodePath
 )
 $ErrorActionPreference = 'Stop'
-$env:USERPROFILE = [Environment]::GetFolderPath('UserProfile')
-$env:APPDATA = [Environment]::GetFolderPath('ApplicationData')
-$env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
+$env:USERPROFILE = Join-Path $WorkDir 'profile'
+$env:APPDATA = Join-Path $env:USERPROFILE 'AppData/Roaming'
+$env:LOCALAPPDATA = Join-Path $env:USERPROFILE 'AppData/Local'
 $env:TEMP = Join-Path $env:LOCALAPPDATA 'Temp'
 $env:TMP = $env:TEMP
-New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+New-Item -ItemType Directory -Force $env:TEMP, $env:APPDATA | Out-Null
 $env:PATH = "$(Split-Path $NodePath);$env:PATH"
 Set-Location -LiteralPath $AppDir
 $installed = Join-Path $WorkDir 'installed'
