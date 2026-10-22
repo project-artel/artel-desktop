@@ -194,7 +194,8 @@ async function startDesktop(): Promise<void> {
       })
     )
       return;
-    const { autoUpdater } = await import('electron-updater');
+    const { default: updater } = await import('electron-updater');
+    const { autoUpdater } = updater;
     updates = new UpdateService(
       autoUpdater,
       async () => {

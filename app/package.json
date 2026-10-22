@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/write-shims.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run && node --test scripts/validate-runtime.test.mjs",
+    "test": "vitest run && node --test scripts/validate-runtime.test.mjs scripts/verify-updater-import.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dist": "npm run build && electron-builder --config electron-builder.config.mjs",
