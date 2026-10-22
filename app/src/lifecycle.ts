@@ -52,6 +52,7 @@ function initialServices(): Record<ServiceName, ServiceView> {
 export class StackController {
   private handle: RunningStack | undefined;
   private starting: Promise<void> | undefined;
+  private maintenance = false;
   private current: StartupState = { phase: 'idle', services: initialServices() };
 
   constructor(private readonly options: StackControllerOptions) {}
@@ -66,6 +67,7 @@ export class StackController {
 
   /** Starts the stack. Calls made while a start is in progress share that start. */
   start(): Promise<void> {
+    if (this.maintenance) return Promise.resolve();
     if (this.handle !== undefined) return Promise.resolve();
     this.starting ??= this.runStart().finally(() => {
       this.starting = undefined;
@@ -78,12 +80,12 @@ export class StackController {
     await this.starting?.catch(() => undefined);
     const handle = this.handle;
     if (handle === undefined) return;
-    this.handle = undefined;
     if (handle.attached) {
       await this.options.supervisor.stopStack(this.dataDirOption());
     } else {
       await handle.stop();
     }
+    this.handle = undefined;
     this.update({ phase: 'stopped', services: initialServices() });
   }
 
@@ -92,8 +94,31 @@ export class StackController {
     await this.starting?.catch(() => undefined);
     const handle = this.handle;
     if (handle === undefined || handle.attached) return;
-    this.handle = undefined;
     await handle.stop();
+    this.handle = undefined;
+  }
+
+  async prepareUpdate(backup: () => Promise<unknown>): Promise<void> {
+    if (this.maintenance) throw new Error('An update is already being prepared.');
+    this.maintenance = true;
+    try {
+      await this.starting;
+      if (this.handle?.attached) {
+        throw new Error('Stop the stack started by the CLI before updating.');
+      }
+      await this.stop();
+      if ((await this.options.supervisor.stackStatus(this.dataDirOption())).running) {
+        throw new Error('The stack is still running. Stop it before updating.');
+      }
+      await backup();
+    } catch (error) {
+      this.maintenance = false;
+      throw error;
+    }
+  }
+
+  cancelUpdate(): void {
+    this.maintenance = false;
   }
 
   logDir(): string {

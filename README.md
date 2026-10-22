@@ -35,7 +35,8 @@ npm run dist:dir   # `ARTEL_RUNTIME_SOURCE=<runtime 디렉터리>` 로 runtime �
 - 개발 중에는 `ARTEL_RUNTIME_DIR` 로 runtime 디렉터리를 지정합니다. 설치된 앱은 `resources/runtime` 을 씁니다.
 - supervisor 는 고정된 CLI source commit의 패키지를 사용합니다. 출처와 재빌드 명령은 [`app/vendor/README.md`](app/vendor/README.md)에 있습니다.
 - `ARTEL_DATA_DIR`로 서비스와 Electron 데이터를 별도 디렉터리에 저장할 수 있습니다. 기본 서비스 데이터 경로는 Windows의 `%LOCALAPPDATA%\ARTEL`입니다.
-- 서명은 `CSC_LINK`, `WIN_CSC_LINK`, `APPLE_*` 환경 변수가 있을 때만 켜지고, 서명되지 않은 build 는 update 확인을 하지 않습니다.
+- 서명은 `CSC_LINK`, `WIN_CSC_LINK`, `APPLE_*` 환경 변수로 설정합니다. Windows NSIS와 Linux AppImage는 앱 내 업데이트를 지원하고, macOS는 서명된 빌드가 필요합니다.
+- 업데이트 메뉴, 데이터 백업과 Flyway migration 적용 방식은 [업데이트 안내](app/UPDATES.md)에 있습니다.
 - `app-v<version>` tag는 Windows·macOS·Linux의 x64·ARM64 설치 파일을 빌드하고 패키지 및 내장 CLI를 검사한 뒤 release합니다. `app/package.json`의 version과 tag가 같아야 합니다.
 
 ## License

@@ -20,6 +20,13 @@ import { parseNetworkDraft } from './network-settings.js';
 import { resolveRuntimeDir } from './runtime-dir.js';
 import { loadSupervisor } from './supervisor.js';
 import { shouldCheckForUpdates } from './update-policy.js';
+import {
+  acquireUpdateLock,
+  backupForUpdate,
+  validateDataLocation,
+  validateExistingData,
+} from './update-backup.js';
+import { UpdateService } from './update-service.js';
 import { allowedOrigins, decideNavigationAmong, decideWindowOpen } from './url-policy.js';
 
 const here = import.meta.dirname;
@@ -60,6 +67,13 @@ async function startDesktop(): Promise<void> {
   }
 
   const supervisor = await loadSupervisor();
+  const resolvedDataDir = path.resolve(dataDir?.trim() || supervisor.defaultDataDir());
+  const runtimeDir = resolveRuntimeDir({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    env: process.env,
+  });
+  await validateExistingData(resolvedDataDir, runtimeDir);
   const controller = new StackController({
     supervisor,
     dataDir,
@@ -85,6 +99,134 @@ async function startDesktop(): Promise<void> {
   // eslint-disable-next-line prefer-const
   let tray: Tray | undefined;
   let quitting = false;
+  let updates: UpdateService | undefined;
+  let updateError: string | undefined;
+  let releaseUpdateLock: (() => Promise<void>) | undefined;
+
+  const localText = (ko: string, en: string): string =>
+    app.getLocale().toLowerCase().startsWith('ko') ? ko : en;
+
+  function updateMenuItem(): Electron.MenuItemConstructorOptions {
+    const phase = updates?.phase ?? 'idle';
+    const labels = {
+      idle: localText('업데이트 확인', 'Check for updates'),
+      checking: localText('업데이트 확인 중…', 'Checking for updates…'),
+      available: localText('업데이트 다운로드', 'Download update'),
+      downloading: localText('업데이트 다운로드 중…', 'Downloading update…'),
+      downloaded: localText('재시작하여 업데이트', 'Restart to update'),
+      installing: localText('업데이트 준비 중…', 'Preparing update…'),
+    };
+    return {
+      label: labels[phase],
+      enabled: !['checking', 'downloading', 'installing'].includes(phase),
+      click: () => void runUpdateAction(),
+    };
+  }
+
+  async function runUpdateAction(): Promise<void> {
+    try {
+      if (!updates) {
+        await dialog
+          .showMessageBox({
+            message: localText('설치 파일로 업데이트해 주세요.', 'Update using the installer.'),
+            detail: localText(
+              '릴리스 페이지에서 새 설치 파일을 받을 수 있어요.',
+              'Download the new installer from the releases page.',
+            ),
+            buttons: [
+              localText('릴리스 페이지 열기', 'Open releases'),
+              localText('취소', 'Cancel'),
+            ],
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0)
+              openExternal('https://github.com/project-artel/artel-desktop/releases/latest');
+          });
+        return;
+      }
+      if (updates.phase === 'available') await updates.download();
+      else if (updates.phase === 'downloaded') {
+        const { response } = await dialog.showMessageBox({
+          type: 'question',
+          message: localText('ARTEL을 재시작하여 업데이트할까요?', 'Restart ARTEL to update?'),
+          detail: localText(
+            '진행 중인 작업을 마친 뒤 업데이트해 주세요.',
+            'Finish any running work before updating.',
+          ),
+          buttons: [localText('업데이트', 'Update'), localText('나중에', 'Later')],
+          defaultId: 1,
+          cancelId: 1,
+        });
+        if (response === 0) await updates.install();
+      } else if (updates.phase === 'idle') {
+        updateError = undefined;
+        await updates.check();
+        if (updateError) throw new Error(updateError);
+        if (updates.phase === 'idle')
+          await dialog.showMessageBox({
+            message: localText('최신 버전입니다.', 'ARTEL is up to date.'),
+          });
+      }
+    } catch (error) {
+      quitting = false;
+      controller.cancelUpdate();
+      await releaseUpdateLock?.();
+      releaseUpdateLock = undefined;
+      await dialog.showMessageBox({
+        type: 'error',
+        message: localText(
+          '업데이트하지 못했어요. 다시 시도해 주세요.',
+          'Could not update. Please try again.',
+        ),
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function initializeUpdates(): Promise<void> {
+    if (
+      !shouldCheckForUpdates({
+        packaged: app.isPackaged,
+        signed: readSigned(),
+        platform: process.platform,
+        env: process.env,
+      })
+    )
+      return;
+    const { autoUpdater } = await import('electron-updater');
+    updates = new UpdateService(
+      autoUpdater,
+      async () => {
+        validateDataLocation(resolvedDataDir, path.dirname(process.resourcesPath));
+        await controller.prepareUpdate(async () => {
+          releaseUpdateLock = await acquireUpdateLock(resolvedDataDir);
+          await backupForUpdate(resolvedDataDir, app.getVersion());
+        });
+        quitting = true;
+      },
+      () => {
+        applicationMenu();
+        refreshTray();
+      },
+    );
+    autoUpdater.on('update-available', () => updates?.setPhase('available'));
+    autoUpdater.on('update-not-available', () => updates?.setPhase('idle'));
+    autoUpdater.on('error', (error) => {
+      updateError = error.message;
+      if (updates?.phase === 'installing') {
+        quitting = false;
+        controller.cancelUpdate();
+        const release = releaseUpdateLock;
+        releaseUpdateLock = undefined;
+        void Promise.resolve(release?.()).then(() => {
+          updates?.setPhase('downloaded');
+          dialog.showErrorBox('ARTEL', error.message);
+        });
+      }
+    });
+    await updates.check().catch(() => undefined);
+  }
 
   const iconPath = path.join(here, '..', 'assets', 'icon.png');
   // The tray shows the mark at 16 to 22 px, where the app icon's padding would shrink it further.
@@ -307,6 +449,7 @@ async function startDesktop(): Promise<void> {
             ? [{ label: 'Install the artel command…', click: () => void installCliLink() }]
             : []),
           { label: networkLabel(), click: openNetworkWindow },
+          updateMenuItem(),
           { label: 'Open log folder', click: () => void shell.openPath(controller.logDir()) },
           { type: 'separator' },
           { role: 'quit' },
@@ -326,6 +469,7 @@ async function startDesktop(): Promise<void> {
       Menu.buildFromTemplate([
         { label: 'Open ARTEL', click: openConsole },
         { label: networkLabel(), click: openNetworkWindow },
+        updateMenuItem(),
         { label: 'Stop stack', enabled: running, click: () => void controller.stop() },
         { label: 'Open log folder', click: () => void shell.openPath(controller.logDir()) },
         { type: 'separator' },
@@ -388,6 +532,7 @@ async function startDesktop(): Promise<void> {
   app.on('before-quit', (event) => {
     if (quitting) return;
     event.preventDefault();
+    if (updates?.phase === 'installing') return;
     quitting = true;
     void controller.quit().finally(() => app.quit());
   });
@@ -407,7 +552,7 @@ async function startDesktop(): Promise<void> {
   );
   void controller.start();
   void offerCliLinkOnFirstRun();
-  void checkForUpdates();
+  void initializeUpdates().catch(() => undefined);
 }
 
 function readSigned(): boolean {
@@ -419,14 +564,4 @@ function readSigned(): boolean {
   } catch {
     return false;
   }
-}
-
-async function checkForUpdates(): Promise<void> {
-  if (
-    !shouldCheckForUpdates({ packaged: app.isPackaged, signed: readSigned(), env: process.env })
-  ) {
-    return;
-  }
-  const { autoUpdater } = await import('electron-updater');
-  await autoUpdater.checkForUpdatesAndNotify().catch(() => undefined);
 }

@@ -59,6 +59,8 @@ jobs:
       - name: Build installer
         env:
           TARGET_ARCH: ${{ matrix.arch }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npx electron-builder --config electron-builder.config.mjs --win "--$env:TARGET_ARCH" --publish never
       - name: Install and verify files
         env:
@@ -87,6 +89,8 @@ jobs:
           path: |
             app/release/*.exe
             app/release/*.sha256
+            app/release/*.yml
+            app/release/*.blockmap
           if-no-files-found: error
           compression-level: 0
 
@@ -146,6 +150,13 @@ jobs:
           echo "ARTEL_RUNTIME_SOURCE=$runtime" >> "$GITHUB_ENV"
       - run: npm run build
       - name: Build installers
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx electron-builder --config electron-builder.config.mjs --${{ matrix.builder }} --${{ matrix.arch }} --publish never
       - name: Verify macOS disk image and bundled CLI
         if: matrix.platform == 'darwin'
@@ -195,12 +206,89 @@ jobs:
             app/release/*.AppImage
             app/release/*.deb
             app/release/*.sha256
+            app/release/*.yml
+            app/release/*.blockmap
           if-no-files-found: error
           compression-level: 0
 
+  upgrade:
+    needs: [windows]
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: app
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: windows-installer-x64
+          path: app/release
+      - name: Install released 0.1.0 and create persistent data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'baseline'
+          $installed = Join-Path $env:RUNNER_TEMP 'ARTEL upgrade'
+          $data = Join-Path $env:RUNNER_TEMP 'ARTEL upgrade data'
+          New-Item -ItemType Directory -Force $download | Out-Null
+          gh release download app-v0.1.0 --repo project-artel/artel-desktop --pattern 'ARTEL-Setup-0.1.0-x64.exe*' --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline download failed' }
+          $installer = Join-Path $download 'ARTEL-Setup-0.1.0-x64.exe'
+          $expected = (Get-Content "$installer.sha256").Split(' ')[0]
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $expected) { throw 'Baseline checksum mismatch' }
+          $process = Start-Process $installer -ArgumentList @('/S', '/currentuser', "/D=$installed") -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Baseline install failed' }
+          node scripts/verify-upgrade.mjs seed "$installed/artel.exe" $data 0.1.0
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline data creation failed' }
+          "UPGRADE_INSTALL_DIR=$installed" >> $env:GITHUB_ENV
+          "UPGRADE_DATA_DIR=$data" >> $env:GITHUB_ENV
+      - name: Upgrade with release installer and verify existing data
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $installer = (Resolve-Path "release/ARTEL-Setup-$version-x64.exe").Path
+          $process = Start-Process $installer -ArgumentList @('/S', '/currentuser', "/D=$env:UPGRADE_INSTALL_DIR") -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Upgrade install failed' }
+          node scripts/verify-upgrade.mjs verify "$env:UPGRADE_INSTALL_DIR/artel.exe" $env:UPGRADE_DATA_DIR $version
+          if ($LASTEXITCODE -ne 0) { throw 'Data preservation failed' }
+      - name: Build next version only for automatic update verification
+        env:
+          TARGET_ARCH: x64
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $next = node -e "const s=require('semver');process.stdout.write(s.inc(process.argv[1],'patch'))" $version
+          $env:ARTEL_RUNTIME_SOURCE = "$env:UPGRADE_INSTALL_DIR/resources/runtime"
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+          npx electron-builder --config electron-builder.config.mjs --win --x64 --publish never "--config.extraMetadata.version=$next" --config.directories.output=build/update-target
+          if ($LASTEXITCODE -ne 0) { throw 'Update target build failed' }
+          "UPGRADE_TARGET_VERSION=$next" >> $env:GITHUB_ENV
+      - name: Download and install through the app and verify preserved data
+        run: |
+          node scripts/verify-upgrade.mjs auto "$env:UPGRADE_INSTALL_DIR/artel.exe" $env:UPGRADE_DATA_DIR $env:UPGRADE_TARGET_VERSION build/update-target
+          if ($LASTEXITCODE -ne 0) { throw 'Automatic update failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: upgrade-evidence
+          path: |
+            ${{ runner.temp }}/ARTEL upgrade data/upgrade-report.json
+            ${{ runner.temp }}/ARTEL upgrade data/upgrade-*.png
+          if-no-files-found: warn
+
   release:
     if: startsWith(github.ref, 'refs/tags/app-v')
-    needs: [windows, unix]
+    needs: [windows, unix, upgrade]
     runs-on: ubuntu-latest
     permissions:
       contents: write
