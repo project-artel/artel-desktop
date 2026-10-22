@@ -1,0 +1,57 @@
+name: Publish verified desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      verified_run_id:
+        description: "Successful Desktop installers run with upgrade verification"
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Verify candidate result and unchanged application sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_RUN: ${{ inputs.verified_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$VERIFIED_RUN" =~ ^[0-9]+$ ]]
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN")
+          test "$(jq -r .name <<< "$run")" = 'Desktop installers'
+          test "$(jq -r .conclusion <<< "$run")" = success
+          verified_sha=$(jq -r .head_sha <<< "$run")
+          git diff --exit-code "$verified_sha" HEAD -- app runtime
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_RUN/jobs" --paginate > jobs.json
+          jq -e '.jobs | any(.name == "upgrade" and .conclusion == "success")' jobs.json
+          jq -e '[.jobs[] | select(.name | startswith("windows (") or startswith("unix ("))] | length == 6 and all(.conclusion == "success")' jobs.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ inputs.verified_run_id }}
+          github-token: ${{ github.token }}
+          pattern: "*installer-*"
+          path: release
+          merge-multiple: true
+      - name: Publish checked installers without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_RUN: ${{ inputs.verified_run_id }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./app/package.json').version")
+          for metadata in latest-x64.yml latest-arm64.yml latest-x64-mac.yml latest-arm64-mac.yml latest-x64-linux.yml latest-arm64-linux-arm64.yml; do
+            test -s "release/$metadata"
+          done
+          (cd release && sha256sum --check *.sha256)
+          cp app/RELEASE.md release-notes.md
+          printf '\n검증된 CI 설치 파일을 재빌드 없이 게시했습니다. 계정·로그인 세션, DB 행, migration 이력, 설정 키와 저장 파일 보존 및 설치 전 백업을 확인했습니다.\n\n[설치 및 업데이트 검증 기록](https://github.com/%s/actions/runs/%s)\n' "$GITHUB_REPOSITORY" "$VERIFIED_RUN" >> release-notes.md
+          gh release create "app-v$version" release/* --target "$GITHUB_SHA" --title "ARTEL $version" --notes-file release-notes.md --latest
