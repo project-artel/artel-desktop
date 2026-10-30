@@ -11,8 +11,8 @@ ARTEL 전체 stack 을 Docker 없이 실행하는 desktop 앱과 runtime bundle 
 
 ## OS별 앱 설치
 
-[앱 release](https://github.com/project-artel/artel-desktop/releases/tag/app-v0.1.1)에서
-일반 Intel·AMD PC는 `ARTEL-Setup-0.1.1-x64.exe`, ARM64 PC는 `ARTEL-Setup-0.1.1-arm64.exe`를 실행합니다.
+[앱 release](https://github.com/project-artel/artel-desktop/releases/tag/app-v0.2.0)에서
+일반 Intel·AMD PC는 `ARTEL-Setup-0.2.0-x64.exe`, ARM64 PC는 `ARTEL-Setup-0.2.0-arm64.exe`를 실행합니다.
 설치 후 바탕화면이나 시작 메뉴의 **ARTEL**을 열면 `artel.exe`가 내장 서비스를 시작합니다.
 처음 표시되는 로그인 화면의 **Create account**에서 첫 계정을 만드세요.
 Docker·Node·Java·Python을 따로 설치할 필요는 없습니다.

@@ -48,11 +48,11 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $name = "artel-runtime-0.1.0-win32-$env:TARGET_ARCH.tar.gz"
+          $name = "artel-runtime-0.2.0-win32-$env:TARGET_ARCH.tar.gz"
           $download = Join-Path $env:RUNNER_TEMP 'runtime-download'
           $runtime = Join-Path $env:RUNNER_TEMP 'runtime'
           New-Item -ItemType Directory -Force $download, $runtime | Out-Null
-          gh release download runtime-v0.1.0 --repo project-artel/artel-desktop --pattern "$name*" --dir $download
+          gh release download runtime-v0.2.0 --repo project-artel/artel-desktop --pattern "$name*" --dir $download
           if ($LASTEXITCODE -ne 0) { throw 'Runtime download failed' }
           $archive = Join-Path $download $name
           $expected = (Get-Content "$archive.sha256").Split(' ')[0]
@@ -147,11 +147,11 @@ jobs:
           TARGET: ${{ matrix.platform }}-${{ matrix.arch }}
         run: |
           set -euo pipefail
-          name="artel-runtime-0.1.0-$TARGET.tar.gz"
+          name="artel-runtime-0.2.0-$TARGET.tar.gz"
           download="$RUNNER_TEMP/runtime-download"
           runtime="$RUNNER_TEMP/runtime"
           mkdir -p "$download" "$runtime"
-          gh release download runtime-v0.1.0 --repo project-artel/artel-desktop --pattern "$name*" --dir "$download"
+          gh release download runtime-v0.2.0 --repo project-artel/artel-desktop --pattern "$name*" --dir "$download"
           (cd "$download" && shasum -a 256 --check "$name.sha256")
           tar -xzf "$download/$name" -C "$runtime"
           node scripts/validate-runtime.mjs "$runtime" "$TARGET"
