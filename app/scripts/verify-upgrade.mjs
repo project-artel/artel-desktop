@@ -119,7 +119,7 @@ async function verify(app, page, version) {
   assert.deepEqual(await me(page), fixture.account, 'Account/session changed');
   assert.equal(await sql('SELECT payload FROM desktop_update_probe WHERE id = 1'), fixture.row);
   // A newer runtime may add migrations; the ones applied before the upgrade must stay as they were.
-  const migrations = (await sql(migrationHistoryQuery)).split('\n');
+  const migrations = (await sql(migrationHistoryQuery)).split(/\r?\n/);
   assert.deepEqual(
     migrations.slice(0, fixture.migrations.length),
     fixture.migrations,
@@ -171,7 +171,7 @@ if (mode === 'seed') {
       JSON.stringify({
         account: await me(page),
         row: await sql('SELECT payload FROM desktop_update_probe WHERE id = 1'),
-        migrations: (await sql(migrationHistoryQuery)).split('\n'),
+        migrations: (await sql(migrationHistoryQuery)).split(/\r?\n/),
         configHash: digest(await readFile(path.join(dataDir, 'config.json'))),
         fileHash: digest(await readFile(path.join(dataDir, 'storage', 'upgrade-probe.bin'))),
       }),
