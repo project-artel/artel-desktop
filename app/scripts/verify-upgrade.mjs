@@ -59,6 +59,9 @@ async function launch(updates = false) {
   }
 }
 
+const migrationHistoryQuery =
+  "SELECT installed_rank || ':' || coalesce(version, '') || ':' || coalesce(checksum::text, '') FROM flyway_schema_history WHERE success ORDER BY installed_rank";
+
 async function sql(query) {
   const config = JSON.parse(await readFile(path.join(dataDir, 'config.json'), 'utf8'));
   const psql = path.join(path.dirname(executablePath), 'resources/runtime/postgres/bin/psql.exe');
@@ -115,10 +118,14 @@ async function verify(app, page, version) {
   const fixture = JSON.parse(await readFile(fixtureFile, 'utf8'));
   assert.deepEqual(await me(page), fixture.account, 'Account/session changed');
   assert.equal(await sql('SELECT payload FROM desktop_update_probe WHERE id = 1'), fixture.row);
-  assert.equal(
-    await sql('SELECT count(*) FROM flyway_schema_history WHERE success'),
+  // A newer runtime may add migrations; the ones applied before the upgrade must stay as they were.
+  const migrations = (await sql(migrationHistoryQuery)).split(/\r?\n/);
+  assert.deepEqual(
+    migrations.slice(0, fixture.migrations.length),
     fixture.migrations,
+    'Migration history changed',
   );
+  assert.equal(await sql('SELECT count(*) FROM flyway_schema_history WHERE NOT success'), '0');
   assert.equal(digest(await readFile(path.join(dataDir, 'config.json'))), fixture.configHash);
   assert.equal(
     digest(await readFile(path.join(dataDir, 'storage', 'upgrade-probe.bin'))),
@@ -164,7 +171,7 @@ if (mode === 'seed') {
       JSON.stringify({
         account: await me(page),
         row: await sql('SELECT payload FROM desktop_update_probe WHERE id = 1'),
-        migrations: await sql('SELECT count(*) FROM flyway_schema_history WHERE success'),
+        migrations: (await sql(migrationHistoryQuery)).split(/\r?\n/),
         configHash: digest(await readFile(path.join(dataDir, 'config.json'))),
         fileHash: digest(await readFile(path.join(dataDir, 'storage', 'upgrade-probe.bin'))),
       }),

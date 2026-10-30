@@ -1,7 +1,7 @@
 {
   "name": "@project-artel/desktop",
   "productName": "ARTEL",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "ARTEL desktop app: runs the whole ARTEL stack locally and shows the console in its own window.",
   "author": "ARTEL <dev@artel.kr>",
