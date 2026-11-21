@@ -216,7 +216,9 @@ if (mode === 'seed') {
     }
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  console.log('Upgrade stage: launch candidate with updates enabled');
   const { app } = await launch(true);
+  console.log('Upgrade stage: candidate started');
   let exited = false;
   app.on('close', () => {
     exited = true;
@@ -266,10 +268,14 @@ if (mode === 'seed') {
         item.click();
       }, labels);
     }
+    console.log('Upgrade stage: check update');
     await click(['Check for updates', '업데이트 확인']);
+    console.log('Upgrade stage: download update');
     await click(['Download update', '업데이트 다운로드']);
+    console.log('Upgrade stage: restart to update');
     await click(['Restart to update', '재시작하여 업데이트']);
     await poll(() => exited, 'source app shutdown');
+    console.log('Upgrade stage: candidate closed');
     await poll(async () => {
       try {
         const archive = path.join(path.dirname(executablePath), 'resources/app.asar');
@@ -310,6 +316,7 @@ if (mode === 'seed') {
       completedBackup: true,
       targetVersion: expectedVersion,
     });
+    console.log('Upgrade stage: automatic installation complete');
     const next = await launch();
     try {
       await verify(next.app, next.page, expectedVersion);
