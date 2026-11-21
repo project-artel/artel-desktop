@@ -252,7 +252,7 @@ jobs:
     needs: [windows]
     if: ${{ !cancelled() && (needs.windows.result == 'success' || inputs.installer_run_id != '') }}
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 42
     defaults:
       run:
         working-directory: app
@@ -299,9 +299,10 @@ jobs:
           $script = Join-Path $appDir 'scripts/verify-windows-upgrade.ps1'
           $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"", '-AppDir', "`"$appDir`"", '-WorkDir', "`"$work`"", '-BaselineInstaller', "`"$installer`"", '-NodePath', "`"$node`"")
           $process = Start-Process powershell.exe -Credential $credential -LoadUserProfile -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput "$work/stdout.log" -RedirectStandardError "$work/stderr.log"
-          if (-not $process.WaitForExit(1500000)) { throw 'Upgrade verification timed out' }
+          $finished = $process.WaitForExit(1800000)
           Get-Content "$work/stdout.log"
           Get-Content "$work/stderr.log"
+          if (-not $finished) { throw 'Upgrade verification timed out' }
           if ($process.ExitCode -ne 0) { throw "Upgrade verification failed: $($process.ExitCode)" }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()

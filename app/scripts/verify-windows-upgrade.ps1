@@ -23,14 +23,17 @@ function Install-App([string]$Installer) {
   if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
 }
 
+Write-Output 'Upgrade stage: install baseline'
 Install-App $BaselineInstaller
 & $NodePath scripts/verify-upgrade.mjs seed "$installed/artel.exe" $data 0.2.1
 if ($LASTEXITCODE -ne 0) { throw 'Baseline data creation failed' }
 
+Write-Output 'Upgrade stage: install candidate'
 Install-App (Resolve-Path "release/ARTEL-Setup-$version-x64.exe").Path
 & $NodePath scripts/verify-upgrade.mjs verify "$installed/artel.exe" $data $version
 if ($LASTEXITCODE -ne 0) { throw 'Installer upgrade did not preserve data' }
 
+Write-Output 'Upgrade stage: build automatic update installer'
 $next = & $NodePath -e "const s=require('semver');process.stdout.write(s.inc(process.argv[1],'patch'))" $version
 $env:ARTEL_RUNTIME_SOURCE = "$installed/resources/runtime"
 $env:TARGET_ARCH = 'x64'
@@ -40,5 +43,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Shim build failed' }
 & $NodePath node_modules/electron-builder/cli.js --config electron-builder.config.mjs --win --x64 --publish never "--config.extraMetadata.version=$next" --config.directories.output=build/update-target
 if ($LASTEXITCODE -ne 0) { throw 'Update target build failed' }
+Write-Output 'Upgrade stage: launch automatic update test'
 & $NodePath scripts/verify-upgrade.mjs auto "$installed/artel.exe" $data $next build/update-target
 if ($LASTEXITCODE -ne 0) { throw 'Automatic update did not preserve data' }
