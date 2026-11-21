@@ -251,13 +251,26 @@ if (mode === 'seed') {
       autoUpdater.installDirectory = path.dirname(process.execPath);
       const spawn = children.spawn;
       children.spawn = (command, args, options) => {
-        const child = spawn(command, args, options);
-        if (args?.includes('--updated')) {
-          log(`Installer launch: ${command} ${JSON.stringify(args)} pid=${child.pid}`);
-          child.on('error', (error) => log(`Installer launch error: ${error.message}`));
-          child.on('exit', (code, signal) => log(`Installer exit: ${code} ${signal}`));
-        }
-        return child;
+        if (!args?.includes('--updated')) return spawn(command, args, options);
+        log(`Installer launch: ${command} ${JSON.stringify(args)}`);
+        const script = [
+          '$ErrorActionPreference = "Stop"',
+          '$value = $env:ARTEL_NSIS_DIAGNOSTIC | ConvertFrom-Json',
+          '$trace = $value.trace',
+          'try {',
+          '  $installer = Start-Process -FilePath $value.command -ArgumentList $value.args -WindowStyle Hidden -PassThru',
+          '  Add-Content -LiteralPath $trace ("Installer started: " + $installer.Id)',
+          '  $installer.WaitForExit()',
+          '  Add-Content -LiteralPath $trace ("Installer exited: " + $installer.ExitCode)',
+          '} catch {',
+          '  Add-Content -LiteralPath $trace ("Installer error: " + $_.Exception.Message)',
+          '}',
+        ].join('\n');
+        const shell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+        return spawn(shell, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
+          ...options,
+          env: { ...process.env, ...options?.env, ARTEL_NSIS_DIAGNOSTIC: JSON.stringify({ command, args, trace: traceFile }) },
+        });
       };
       autoUpdater.on('error', (error) => log(`Updater error: ${error.message}`));
       autoUpdater.autoRunAppAfterInstall = false;
