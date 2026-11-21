@@ -125,7 +125,7 @@ jobs:
               arch: x64,
               builder: mac,
             }
-          - { runner: macos-14, platform: darwin, arch: arm64, builder: mac }
+          - { runner: macos-15, platform: darwin, arch: arm64, builder: mac }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     defaults:

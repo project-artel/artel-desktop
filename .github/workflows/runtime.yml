@@ -92,7 +92,7 @@ jobs:
           - { target: linux-arm64, runner: ubuntu-24.04-arm }
           # macos-13 was retired in 2025; macos-15-intel is the remaining Intel image.
           - { target: darwin-x64, runner: macos-15-intel }
-          - { target: darwin-arm64, runner: macos-14 }
+          - { target: darwin-arm64, runner: macos-15 }
           - { target: win32-x64, runner: windows-latest, msvc: x64 }
           - { target: win32-arm64, runner: windows-11-arm, msvc: arm64 }
     defaults:
