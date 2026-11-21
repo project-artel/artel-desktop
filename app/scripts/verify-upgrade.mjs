@@ -26,6 +26,13 @@ async function poll(check, label, timeout = 300000) {
   throw new Error(`Timed out: ${label}`);
 }
 
+function withTimeout(promise, label, timeout = 30000) {
+  const deadline = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Timed out: ${label}`)), timeout).unref();
+  });
+  return Promise.race([promise, deadline]);
+}
+
 async function launch(updates = false) {
   const env = {
     ...process.env,
@@ -219,10 +226,7 @@ if (mode === 'seed') {
   console.log('Upgrade stage: launch candidate with updates enabled');
   const { app } = await launch(true);
   console.log('Upgrade stage: candidate started');
-  let exited = false;
-  app.on('close', () => {
-    exited = true;
-  });
+  const child = app.process();
   try {
     await poll(
       () =>
@@ -261,12 +265,17 @@ if (mode === 'seed') {
           ),
         labels.join('/'),
       );
-      await app.evaluate(({ Menu }, labels) => {
-        const item = Menu.getApplicationMenu().items[0].submenu.items.find((item) =>
-          labels.includes(item.label),
-        );
-        item.click();
-      }, labels);
+      await withTimeout(
+        app.evaluate(({ Menu }, labels) => {
+          const item = Menu.getApplicationMenu().items[0].submenu.items.find((item) =>
+            labels.includes(item.label),
+          );
+          if (!item?.enabled) throw new Error('Update menu item is unavailable');
+          // The restart action can close the channel Playwright uses for evaluate().
+          setTimeout(() => item.click(), 100);
+        }, labels),
+        labels.join('/'),
+      );
     }
     console.log('Upgrade stage: check update');
     await click(['Check for updates', '업데이트 확인']);
@@ -274,7 +283,8 @@ if (mode === 'seed') {
     await click(['Download update', '업데이트 다운로드']);
     console.log('Upgrade stage: restart to update');
     await click(['Restart to update', '재시작하여 업데이트']);
-    await poll(() => exited, 'source app shutdown');
+    await poll(() => child.exitCode !== null || child.signalCode !== null, 'source process exit');
+    assert.equal(child.exitCode, 0, 'Source app did not shut down cleanly');
     console.log('Upgrade stage: candidate closed');
     await poll(async () => {
       try {
@@ -323,9 +333,19 @@ if (mode === 'seed') {
     } finally {
       await next.app.close();
     }
+  } catch (error) {
+    console.error('Automatic update verification failed:', error);
+    throw error;
   } finally {
-    if (!exited) await app.close();
-    await new Promise((resolve) => server.close(resolve));
+    const closed = new Promise((resolve) => server.close(resolve));
+    server.closeAllConnections();
+    try {
+      if (child.exitCode === null && child.signalCode === null) {
+        await withTimeout(app.close(), 'source app cleanup');
+      }
+    } finally {
+      await closed;
+    }
   }
 } else {
   throw new Error(`Unknown mode: ${mode}`);
