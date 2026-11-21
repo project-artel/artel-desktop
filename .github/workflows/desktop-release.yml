@@ -310,6 +310,7 @@ jobs:
           name: upgrade-evidence
           path: |
             ${{ runner.temp }}/upgrade-test/data/upgrade-report.json
+            ${{ runner.temp }}/upgrade-test/data/nsis-update-trace.log
             ${{ runner.temp }}/upgrade-test/data/upgrade-*.png
           if-no-files-found: warn
 

@@ -237,13 +237,29 @@ if (mode === 'seed') {
         ),
       'initial check',
     );
-    await app.evaluate(({ app, dialog }, url) => {
+    await app.evaluate(({ app, dialog }, { url, traceFile }) => {
       const require = process
         .getBuiltinModule('module')
         .createRequire(`${app.getAppPath()}/package.json`);
       const { autoUpdater } = require('electron-updater');
       autoUpdater.setFeedURL({ provider: 'generic', url, channel: `latest-${process.arch}` });
       autoUpdater.disableDifferentialDownload = true;
+      const fs = process.getBuiltinModule('node:fs');
+      const path = process.getBuiltinModule('node:path');
+      const children = process.getBuiltinModule('node:child_process');
+      const log = (message) => fs.appendFileSync(traceFile, message + '\n');
+      autoUpdater.installDirectory = path.dirname(process.execPath);
+      const spawn = children.spawn;
+      children.spawn = (command, args, options) => {
+        const child = spawn(command, args, options);
+        if (args?.includes('--updated')) {
+          log(`Installer launch: ${command} ${JSON.stringify(args)} pid=${child.pid}`);
+          child.on('error', (error) => log(`Installer launch error: ${error.message}`));
+          child.on('exit', (code, signal) => log(`Installer exit: ${code} ${signal}`));
+        }
+        return child;
+      };
+      autoUpdater.on('error', (error) => log(`Updater error: ${error.message}`));
       autoUpdater.autoRunAppAfterInstall = false;
       // CI에서는 확인 대화상자와 NSIS wizard만 생략하고 앱의 종료·백업 경로를 그대로 실행한다.
       dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false });
@@ -252,7 +268,10 @@ if (mode === 'seed') {
       };
       const install = autoUpdater.quitAndInstall.bind(autoUpdater);
       autoUpdater.quitAndInstall = () => install(true, false);
-    }, `http://127.0.0.1:${server.address().port}/`);
+    }, {
+      url: `http://127.0.0.1:${server.address().port}/`,
+      traceFile: path.join(dataDir, 'nsis-update-trace.log'),
+    });
     async function click(labels) {
       await poll(
         () =>
@@ -335,6 +354,16 @@ if (mode === 'seed') {
     }
   } catch (error) {
     console.error('Automatic update verification failed:', error);
+    const trace = await readFile(path.join(dataDir, 'nsis-update-trace.log'), 'utf8')
+      .catch(() => 'No installer launch was recorded.');
+    console.error(trace);
+    const archive = path.join(path.dirname(executablePath), 'resources/app.asar');
+    uncache(archive);
+    try {
+      console.error('Version after NSIS:', JSON.parse(extractFile(archive, 'package.json')).version);
+    } catch (readError) {
+      console.error('Could not read installed app after NSIS:', readError);
+    }
     throw error;
   } finally {
     const closed = new Promise((resolve) => server.close(resolve));
