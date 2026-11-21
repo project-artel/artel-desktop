@@ -42,14 +42,22 @@ async function launch(updates = false) {
   let page;
   try {
     await poll(async () => {
-      for (const candidate of app.windows()) {
-        if (candidate.url().startsWith('http://127.0.0.1:')) page = candidate;
-        if (candidate.url().includes('startup.html')) {
+      const process = app.process();
+      if (process.exitCode !== null || process.signalCode !== null) {
+        throw new Error(`Desktop exited during startup: ${process.exitCode ?? process.signalCode}`);
+      }
+      const windows = app.windows().filter((candidate) => !candidate.isClosed());
+      page = windows.find((candidate) => candidate.url().startsWith('http://127.0.0.1:'));
+      if (page) return true;
+      for (const candidate of windows.filter((window) => window.url().includes('startup.html'))) {
+        try {
           const state = await candidate.evaluate(() => window.artelStartup?.getState());
           if (state?.phase === 'failed') throw new Error(state.error);
+        } catch (error) {
+          if (!candidate.isClosed()) throw error;
         }
       }
-      return Boolean(page);
+      return false;
     }, 'stack startup');
     await page.waitForLoadState('domcontentloaded');
     return { app, page };
