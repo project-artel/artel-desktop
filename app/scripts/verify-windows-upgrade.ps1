@@ -24,7 +24,7 @@ function Install-App([string]$Installer) {
 }
 
 Install-App $BaselineInstaller
-& $NodePath scripts/verify-upgrade.mjs seed "$installed/artel.exe" $data 0.1.0
+& $NodePath scripts/verify-upgrade.mjs seed "$installed/artel.exe" $data 0.2.1
 if ($LASTEXITCODE -ne 0) { throw 'Baseline data creation failed' }
 
 Install-App (Resolve-Path "release/ARTEL-Setup-$version-x64.exe").Path

@@ -38,9 +38,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  ARTEL_ORCHESTRATION_REF: ${{ inputs.orchestration_ref || 'bf42e41ec77f67abbf0e345b7779d491b2689cbd' }}
-  ARTEL_AGENT_SERVER_REF: ${{ inputs.agent_server_ref || '35313155a904fbfbbbdcadb2ab37f745a6c4e271' }}
-  ARTEL_HOME_REF: ${{ inputs.home_ref || '758de2da9c9d79cb7a23c7f48500b45a265186cd' }}
+  ARTEL_ORCHESTRATION_REF: ${{ inputs.orchestration_ref || 'd7762bcb49de4fbeb22f327ed5336113aed91c35' }}
+  ARTEL_AGENT_SERVER_REF: ${{ inputs.agent_server_ref || '8c5484d73121c10896616f8ec29aebc8eae175da' }}
+  ARTEL_HOME_REF: ${{ inputs.home_ref || 'a297e6f1905f6a9270308403ecf2684819d61c90' }}
 
 jobs:
   common:
