@@ -26,6 +26,13 @@ async function poll(check, label, timeout = 300000) {
   throw new Error(`Timed out: ${label}`);
 }
 
+function withTimeout(promise, label, timeout = 30000) {
+  const deadline = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Timed out: ${label}`)), timeout).unref();
+  });
+  return Promise.race([promise, deadline]);
+}
+
 async function launch(updates = false) {
   const env = {
     ...process.env,
@@ -42,14 +49,22 @@ async function launch(updates = false) {
   let page;
   try {
     await poll(async () => {
-      for (const candidate of app.windows()) {
-        if (candidate.url().startsWith('http://127.0.0.1:')) page = candidate;
-        if (candidate.url().includes('startup.html')) {
+      const process = app.process();
+      if (process.exitCode !== null || process.signalCode !== null) {
+        throw new Error(`Desktop exited during startup: ${process.exitCode ?? process.signalCode}`);
+      }
+      const windows = app.windows().filter((candidate) => !candidate.isClosed());
+      page = windows.find((candidate) => candidate.url().startsWith('http://127.0.0.1:'));
+      if (page) return true;
+      for (const candidate of windows.filter((window) => window.url().includes('startup.html'))) {
+        try {
           const state = await candidate.evaluate(() => window.artelStartup?.getState());
           if (state?.phase === 'failed') throw new Error(state.error);
+        } catch (error) {
+          if (!candidate.isClosed()) throw error;
         }
       }
-      return Boolean(page);
+      return false;
     }, 'stack startup');
     await page.waitForLoadState('domcontentloaded');
     return { app, page };
@@ -208,11 +223,10 @@ if (mode === 'seed') {
     }
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  console.log('Upgrade stage: launch candidate with updates enabled');
   const { app } = await launch(true);
-  let exited = false;
-  app.on('close', () => {
-    exited = true;
-  });
+  console.log('Upgrade stage: candidate started');
+  const child = app.process();
   try {
     await poll(
       () =>
@@ -251,17 +265,27 @@ if (mode === 'seed') {
           ),
         labels.join('/'),
       );
-      await app.evaluate(({ Menu }, labels) => {
-        const item = Menu.getApplicationMenu().items[0].submenu.items.find((item) =>
-          labels.includes(item.label),
-        );
-        item.click();
-      }, labels);
+      await withTimeout(
+        app.evaluate(({ Menu }, labels) => {
+          const item = Menu.getApplicationMenu().items[0].submenu.items.find((item) =>
+            labels.includes(item.label),
+          );
+          if (!item?.enabled) throw new Error('Update menu item is unavailable');
+          // The restart action can close the channel Playwright uses for evaluate().
+          setTimeout(() => item.click(), 100);
+        }, labels),
+        labels.join('/'),
+      );
     }
+    console.log('Upgrade stage: check update');
     await click(['Check for updates', '업데이트 확인']);
+    console.log('Upgrade stage: download update');
     await click(['Download update', '업데이트 다운로드']);
+    console.log('Upgrade stage: restart to update');
     await click(['Restart to update', '재시작하여 업데이트']);
-    await poll(() => exited, 'source app shutdown');
+    await poll(() => child.exitCode !== null || child.signalCode !== null, 'source process exit');
+    assert.equal(child.exitCode, 0, 'Source app did not shut down cleanly');
+    console.log('Upgrade stage: candidate closed');
     await poll(async () => {
       try {
         const archive = path.join(path.dirname(executablePath), 'resources/app.asar');
@@ -302,15 +326,26 @@ if (mode === 'seed') {
       completedBackup: true,
       targetVersion: expectedVersion,
     });
+    console.log('Upgrade stage: automatic installation complete');
     const next = await launch();
     try {
       await verify(next.app, next.page, expectedVersion);
     } finally {
       await next.app.close();
     }
+  } catch (error) {
+    console.error('Automatic update verification failed:', error);
+    throw error;
   } finally {
-    if (!exited) await app.close();
-    await new Promise((resolve) => server.close(resolve));
+    const closed = new Promise((resolve) => server.close(resolve));
+    server.closeAllConnections();
+    try {
+      if (child.exitCode === null && child.signalCode === null) {
+        await withTimeout(app.close(), 'source app cleanup');
+      }
+    } finally {
+      await closed;
+    }
   }
 } else {
   throw new Error(`Unknown mode: ${mode}`);
